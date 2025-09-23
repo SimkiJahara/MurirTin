@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "782792667224",
+    "project_id": "muritin-78a12",
+    "storage_bucket": "muritin-78a12.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:782792667224:android:207cd4e362a500b9edda2d",
+        "android_client_info": {
+          "package_name": "com.example.muritin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpJEJw2PxR-qwXSTZSnMihcF8cl1bQhPE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
