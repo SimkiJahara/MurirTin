@@ -1,6 +1,7 @@
 package com.example.muritin
 
 import android.os.Bundle
+import android.os.StrictMode
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -18,14 +19,37 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : ComponentActivity() {
+    private val scope = CoroutineScope(Dispatchers.IO)
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectAll()
+                .penaltyLog()
+                .build()
+        )
         super.onCreate(savedInstanceState)
+
+        try {
+            FirebaseApp.initializeApp(this)
+            Log.d("MainActivity", "Firebase initialized successfully")
+            scope.launch {
+                AuthRepository().debugSaveTestData() // Remove after testing
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Firebase initialization failed: ${e.message}", e)
+        }
+
         setContent {
             MuriTinTheme {
                 Surface(
@@ -33,15 +57,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    val currentUser = FirebaseAuth.getInstance().currentUser
-
-                    if (currentUser != null) {
-                        // User is logged in - show dashboard based on role
-                        UserDashboard(navController, currentUser)
-                    } else {
-                        // Show auth screens
-                        AuthNavHost(navController)
-                    }
+                    AppNavHost(navController)
                 }
             }
         }
@@ -49,38 +65,91 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AuthNavHost(navController: NavHostController) {
+fun AppNavHost(navController: NavHostController) {
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    Log.d("AppNavHost", "Current user: ${currentUser?.email ?: "null"}, uid: ${currentUser?.uid ?: "null"}")
+    val startDestination = if (currentUser != null) "user_dashboard" else "login"
+
     NavHost(
         navController = navController,
-        startDestination = "login"
+        startDestination = startDestination
     ) {
         composable("login") {
+            Log.d("AppNavHost", "Navigating to LoginScreen")
             LoginScreen(
                 navController = navController,
                 onLoginSuccess = { user ->
+                    Log.d("AppNavHost", "Login success, navigating to ${user.role} dashboard")
                     when (user.role) {
-                        "Conductor" -> navController.navigate("conductor_dashboard")
-                        else -> navController.navigate("rider_dashboard")
+                        "Conductor" -> navController.navigate("conductor_dashboard") {
+                            popUpTo("login") { inclusive = true }
+                        }
+                        else -> navController.navigate("rider_dashboard") {
+                            popUpTo("login") { inclusive = true }
+                        }
                     }
                 }
             )
         }
-        composable("signup") {
-            SignupScreen(
-                navController = navController,
-                onSignupSuccess = { user ->
-                    when (user.role) {
-                        "Conductor" -> navController.navigate("conductor_dashboard")
-                        else -> navController.navigate("rider_dashboard")
+        composable("user_dashboard") {
+            Log.d("AppNavHost", "Navigating to UserDashboard")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                UserDashboard(navController, user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
                     }
                 }
-            )
+            }
         }
         composable("rider_dashboard") {
-            RiderDashboard(FirebaseAuth.getInstance().currentUser!!)
+            Log.d("AppNavHost", "Navigating to RiderDashboard")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                RiderDashboard(
+                    user = user,
+                    onLogout = {
+                        Log.d("AppNavHost", "Logout triggered, navigating to login")
+                        FirebaseAuth.getInstance().signOut()
+                        navController.navigate("login") {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    }
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
         }
         composable("conductor_dashboard") {
-            ConductorDashboard(FirebaseAuth.getInstance().currentUser!!)
+            Log.d("AppNavHost", "Navigating to ConductorDashboard")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorDashboard(
+                    user = user,
+                    onLogout = {
+                        Log.d("AppNavHost", "Logout triggered, navigating to login")
+                        FirebaseAuth.getInstance().signOut()
+                        navController.navigate("login") {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    }
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
         }
     }
 }
@@ -88,38 +157,76 @@ fun AuthNavHost(navController: NavHostController) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
+    var role by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
 
-    // Automatically redirect based on role
     LaunchedEffect(user.uid) {
-        AuthRepository().getUserRole(user.uid) { role ->
-            if (currentRoute != "rider_dashboard" && currentRoute != "conductor_dashboard") {
-                if (role == "Conductor") {
-                    navController.navigate("conductor_dashboard")
-                } else {
-                    navController.navigate("rider_dashboard")
+        Log.d("UserDashboard", "Starting role fetch for user ${user.uid}, email: ${user.email}")
+        withTimeoutOrNull(3000L) {
+            try {
+                role = AuthRepository().getUserRole(user.uid)
+                Log.d("UserDashboard", "Role fetched successfully: $role")
+                when (role) {
+                    "Conductor" -> {
+                        Log.d("UserDashboard", "Navigating to conductor_dashboard")
+                        navController.navigate("conductor_dashboard") {
+                            popUpTo("user_dashboard") { inclusive = true }
+                        }
+                    }
+                    else -> {
+                        Log.d("UserDashboard", "Navigating to rider_dashboard")
+                        navController.navigate("rider_dashboard") {
+                            popUpTo("user_dashboard") { inclusive = true }
+                        }
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e("UserDashboard", "Error fetching role: ${e.message}", e)
+                error = "রোল পুনরুদ্ধারে ত্রুটি: ${e.message}"
+                Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                Log.d("UserDashboard", "Falling back to rider_dashboard")
+                navController.navigate("rider_dashboard") {
+                    popUpTo("user_dashboard") { inclusive = true }
+                }
+            }
+        } ?: run {
+            Log.w("UserDashboard", "Timeout fetching role for user ${user.uid}")
+            error = "রোল পুনরুদ্ধারে সময় শেষ"
+            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            Log.d("UserDashboard", "Falling back to rider_dashboard due to timeout")
+            navController.navigate("rider_dashboard") {
+                popUpTo("user_dashboard") { inclusive = true }
             }
         }
     }
 
-    // Show loading while determining role
-    if (currentRoute != "rider_dashboard" && currentRoute != "conductor_dashboard") {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        if (role == null && error == null) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("লোড হচ্ছে...")
+            }
+        } else if (error != null) {
+            Text(
+                text = error ?: "অজানা ত্রুটি",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyLarge
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RiderDashboard(user: FirebaseUser) {
+fun RiderDashboard(user: FirebaseUser, onLogout: () -> Unit) {
     val context = LocalContext.current
+    Log.d("RiderDashboard", "Rendering RiderDashboard for ${user.email}")
 
     Column(
         modifier = Modifier
@@ -138,7 +245,6 @@ fun RiderDashboard(user: FirebaseUser) {
 
         Button(
             onClick = {
-                // TODO: Navigate to booking screen
                 Toast.makeText(context, "টিকিট বুক করার পর্দা আসবে", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth()
@@ -150,8 +256,9 @@ fun RiderDashboard(user: FirebaseUser) {
 
         OutlinedButton(
             onClick = {
-                FirebaseAuth.getInstance().signOut()
+                Log.d("RiderDashboard", "Logging out")
                 Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
+                onLogout()
             }
         ) {
             Text("লগআউট")
@@ -161,8 +268,9 @@ fun RiderDashboard(user: FirebaseUser) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConductorDashboard(user: FirebaseUser) {
+fun ConductorDashboard(user: FirebaseUser, onLogout: () -> Unit) {
     val context = LocalContext.current
+    Log.d("ConductorDashboard", "Rendering ConductorDashboard for ${user.email}")
 
     Column(
         modifier = Modifier
@@ -181,7 +289,6 @@ fun ConductorDashboard(user: FirebaseUser) {
 
         Button(
             onClick = {
-                // TODO: Navigate to schedule update screen
                 Toast.makeText(context, "শিডিউল আপডেট পর্দা আসবে", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth()
@@ -193,8 +300,9 @@ fun ConductorDashboard(user: FirebaseUser) {
 
         OutlinedButton(
             onClick = {
-                FirebaseAuth.getInstance().signOut()
+                Log.d("ConductorDashboard", "Logging out")
                 Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
+                onLogout()
             }
         ) {
             Text("লগআউট")
@@ -204,7 +312,5 @@ fun ConductorDashboard(user: FirebaseUser) {
 
 @Composable
 fun MuriTinTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        content = content
-    )
+    MaterialTheme(content = content)
 }

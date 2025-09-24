@@ -1,12 +1,5 @@
 package com.example.muritin
 
-data class User(
-    val uid: String = "",
-    val email: String = "",
-    val role: String = "", // "Rider" or "Conductor"
-    val createdAt: Long = 0L
-)
-
 data class Schedule(
     val busId: String = "",
     val route: String = "",

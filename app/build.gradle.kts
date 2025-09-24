@@ -39,8 +39,8 @@ android {
         compose = true
     }
 }
+
 dependencies {
-    // Core Android dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -49,30 +49,17 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-
-    // Navigation
     implementation(libs.androidx.navigation.compose)
-
-    // Firebase
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.database.ktx)
     implementation(libs.firebase.messaging.ktx)
-
-    // Google Maps & Location
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
-
-    // Material Icons Extended
     implementation(libs.androidx.compose.material.icons.extended)
-
-    // ViewModel for Compose
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-
-    // Coroutines for async tasks
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-
-    // Testing
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
