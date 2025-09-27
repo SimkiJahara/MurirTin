@@ -23,8 +23,6 @@ import androidx.navigation.compose.rememberNavController
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -93,11 +91,8 @@ fun AppNavHost(navController: NavHostController) {
                 val scope = rememberCoroutineScope()
                 var dbUser by remember { mutableStateOf<User?>(null) }
                 LaunchedEffect(user.uid) {
-                    val snapshot = AuthRepository().database.getReference("users").child(user.uid).get().await()
-                    dbUser = snapshot.getValue(User::class.java)?.copy(
-                        uid = user.uid,
-                        email = user.email ?: ""
-                    )
+                    val result = AuthRepository().getUser(user.uid)
+                    dbUser = result.getOrNull()
                 }
                 dbUser?.let {
                     ProfileScreen(
@@ -223,11 +218,8 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
         Log.d("UserDashboard", "Fetching user data for ${user.uid}, email: ${user.email}")
         withTimeoutOrNull(3000L) {
             try {
-                val snapshot = AuthRepository().database.getReference("users").child(user.uid).get().await()
-                userData = snapshot.getValue(User::class.java)?.copy(
-                    uid = user.uid,
-                    email = user.email ?: ""
-                )
+                val result = AuthRepository().getUser(user.uid)
+                userData = result.getOrNull()
                 if (userData == null) {
                     Log.e("UserDashboard", "No user data found for ${user.uid}")
                     error = "ব্যবহারকারীর তথ্য পাওয়া যায়নি"

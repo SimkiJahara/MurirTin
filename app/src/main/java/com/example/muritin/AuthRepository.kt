@@ -85,6 +85,22 @@ class AuthRepository(
         }
     }
 
+    suspend fun getUser(userId: String): Result<User> {
+        Log.d("AuthRepository", "Fetching user data for userId: $userId")
+        return try {
+            val snapshot = database.getReference("users").child(userId).get().await()
+            Log.d("AuthRepository", "Snapshot value: ${snapshot.value}")
+            val user = snapshot.getValue(User::class.java)?.copy(
+                uid = userId
+            ) ?: return Result.failure(Exception("User not found"))
+            Log.d("AuthRepository", "User fetched: ${user.email}, role: ${user.role}")
+            Result.success(user)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error fetching user: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
     fun logout() {
         Log.d("AuthRepository", "Logging out")
         auth.signOut()
