@@ -25,6 +25,11 @@ class AuthRepository(
 
     suspend fun signup(email: String, password: String, role: String): Result<User> {
         Log.d("AuthRepository", "Attempting signup for email: $email, role: $role")
+        // Validate role
+        if (role !in listOf("Rider", "Conductor", "Owner")) {
+            Log.e("AuthRepository", "Invalid role: $role")
+            return Result.failure(Exception("Invalid role"))
+        }
         return try {
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val userId = result.user?.uid ?: return Result.failure(Exception("No user ID"))
@@ -57,6 +62,11 @@ class AuthRepository(
                 uid = userId,
                 email = result.user?.email ?: ""
             ) ?: User(uid = userId, email = result.user?.email ?: "", role = "Rider")
+            // Validate role
+            if (user.role !in listOf("Rider", "Conductor", "Owner")) {
+                Log.e("AuthRepository", "Invalid role found: ${user.role}")
+                return Result.failure(Exception("Invalid role"))
+            }
             Log.d("AuthRepository", "User data fetched: ${user.email}, role: ${user.role}")
             Result.success(user)
         } catch (e: Exception) {
@@ -76,6 +86,10 @@ class AuthRepository(
             val snapshot = database.getReference("users").child(userId).child("role").get().await()
             Log.d("AuthRepository", "Role snapshot value: ${snapshot.value}")
             val role = snapshot.getValue(String::class.java) ?: "Rider"
+            if (role !in listOf("Rider", "Conductor", "Owner")) {
+                Log.e("AuthRepository", "Invalid role fetched: $role, defaulting to Rider")
+                return "Rider"
+            }
             Log.d("AuthRepository", "Role fetched: $role")
             role
         } catch (e: Exception) {

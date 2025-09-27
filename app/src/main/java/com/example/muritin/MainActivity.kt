@@ -79,14 +79,9 @@ fun AppNavHost(navController: NavHostController) {
             LoginScreen(
                 navController = navController,
                 onLoginSuccess = { user ->
-                    Log.d("AppNavHost", "Login success, navigating to ${user.role} dashboard")
-                    when (user.role) {
-                        "Conductor" -> navController.navigate("conductor_dashboard") {
-                            popUpTo("login") { inclusive = true }
-                        }
-                        else -> navController.navigate("rider_dashboard") {
-                            popUpTo("login") { inclusive = true }
-                        }
+                    Log.d("AppNavHost", "Login success, navigating to user_dashboard")
+                    navController.navigate("user_dashboard") {
+                        popUpTo("login") { inclusive = true }
                     }
                 }
             )
@@ -151,6 +146,29 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+        composable("owner_dashboard") {
+            Log.d("AppNavHost", "Navigating to OwnerDashboard")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                OwnerDashboard(
+                    user = user,
+                    onLogout = {
+                        Log.d("AppNavHost", "Logout triggered, navigating to login")
+                        FirebaseAuth.getInstance().signOut()
+                        navController.navigate("login") {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    }
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -172,6 +190,12 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
                     "Conductor" -> {
                         Log.d("UserDashboard", "Navigating to conductor_dashboard")
                         navController.navigate("conductor_dashboard") {
+                            popUpTo("user_dashboard") { inclusive = true }
+                        }
+                    }
+                    "Owner" -> {
+                        Log.d("UserDashboard", "Navigating to owner_dashboard")
+                        navController.navigate("owner_dashboard") {
                             popUpTo("user_dashboard") { inclusive = true }
                         }
                     }
@@ -310,7 +334,46 @@ fun ConductorDashboard(user: FirebaseUser, onLogout: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MuriTinTheme(content: @Composable () -> Unit) {
-    MaterialTheme(content = content)
+fun OwnerDashboard(user: FirebaseUser, onLogout: () -> Unit) {
+    val context = LocalContext.current
+    Log.d("OwnerDashboard", "Rendering OwnerDashboard for ${user.email}")
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "ওনার ড্যাশবোর্ড",
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Text("স্বাগতম, ${user.email}")
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                Toast.makeText(context, "বাস রেজিস্ট্রেশন পর্দা আসবে", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("বাস রেজিস্টার করুন")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedButton(
+            onClick = {
+                Log.d("OwnerDashboard", "Logging out")
+                Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
+                onLogout()
+            }
+        ) {
+            Text("লগআউট")
+        }
+    }
 }
