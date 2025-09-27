@@ -86,6 +86,45 @@ fun AppNavHost(navController: NavHostController) {
                 }
             )
         }
+        composable("profile") {
+            Log.d("AppNavHost", "Navigating to ProfileScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                val scope = rememberCoroutineScope()
+                var dbUser by remember { mutableStateOf<User?>(null) }
+                LaunchedEffect(user.uid) {
+                    val snapshot = AuthRepository().database.getReference("users").child(user.uid).get().await()
+                    dbUser = snapshot.getValue(User::class.java)?.copy(
+                        uid = user.uid,
+                        email = user.email ?: ""
+                    )
+                }
+                dbUser?.let {
+                    ProfileScreen(
+                        navController = navController,
+                        user = it,
+                        onProfileComplete = { updatedUser ->
+                            Log.d("AppNavHost", "Profile completed, navigating to user_dashboard")
+                            navController.navigate("user_dashboard") {
+                                popUpTo("profile") { inclusive = true }
+                            }
+                        }
+                    )
+                } ?: Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
         composable("user_dashboard") {
             Log.d("AppNavHost", "Navigating to UserDashboard")
             val user = FirebaseAuth.getInstance().currentUser
@@ -175,51 +214,71 @@ fun AppNavHost(navController: NavHostController) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
-    var role by remember { mutableStateOf<String?>(null) }
+    var userData by remember { mutableStateOf<User?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     LaunchedEffect(user.uid) {
-        Log.d("UserDashboard", "Starting role fetch for user ${user.uid}, email: ${user.email}")
+        Log.d("UserDashboard", "Fetching user data for ${user.uid}, email: ${user.email}")
         withTimeoutOrNull(3000L) {
             try {
-                role = AuthRepository().getUserRole(user.uid)
-                Log.d("UserDashboard", "Role fetched successfully: $role")
-                when (role) {
-                    "Conductor" -> {
-                        Log.d("UserDashboard", "Navigating to conductor_dashboard")
-                        navController.navigate("conductor_dashboard") {
-                            popUpTo("user_dashboard") { inclusive = true }
-                        }
+                val snapshot = AuthRepository().database.getReference("users").child(user.uid).get().await()
+                userData = snapshot.getValue(User::class.java)?.copy(
+                    uid = user.uid,
+                    email = user.email ?: ""
+                )
+                if (userData == null) {
+                    Log.e("UserDashboard", "No user data found for ${user.uid}")
+                    error = "ব্যবহারকারীর তথ্য পাওয়া যায়নি"
+                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
                     }
-                    "Owner" -> {
-                        Log.d("UserDashboard", "Navigating to owner_dashboard")
-                        navController.navigate("owner_dashboard") {
-                            popUpTo("user_dashboard") { inclusive = true }
-                        }
+                    return@withTimeoutOrNull
+                }
+                Log.d("UserDashboard", "User data fetched: role=${userData?.role}, name=${userData?.name}, phone=${userData?.phone}")
+
+                // Check if profile is incomplete
+                if (userData?.name.isNullOrBlank() || userData?.phone.isNullOrBlank()) {
+                    Log.d("UserDashboard", "Profile incomplete, navigating to profile")
+                    navController.navigate("profile") {
+                        popUpTo("user_dashboard") { inclusive = true }
                     }
-                    else -> {
-                        Log.d("UserDashboard", "Navigating to rider_dashboard")
-                        navController.navigate("rider_dashboard") {
-                            popUpTo("user_dashboard") { inclusive = true }
+                } else {
+                    when (userData?.role) {
+                        "Conductor" -> {
+                            Log.d("UserDashboard", "Navigating to conductor_dashboard")
+                            navController.navigate("conductor_dashboard") {
+                                popUpTo("user_dashboard") { inclusive = true }
+                            }
+                        }
+                        "Owner" -> {
+                            Log.d("UserDashboard", "Navigating to owner_dashboard")
+                            navController.navigate("owner_dashboard") {
+                                popUpTo("user_dashboard") { inclusive = true }
+                            }
+                        }
+                        else -> {
+                            Log.d("UserDashboard", "Navigating to rider_dashboard")
+                            navController.navigate("rider_dashboard") {
+                                popUpTo("user_dashboard") { inclusive = true }
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.e("UserDashboard", "Error fetching role: ${e.message}", e)
-                error = "রোল পুনরুদ্ধারে ত্রুটি: ${e.message}"
+                Log.e("UserDashboard", "Error fetching user data: ${e.message}", e)
+                error = "তথ্য পুনরুদ্ধারে ত্রুটি: ${e.message}"
                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                Log.d("UserDashboard", "Falling back to rider_dashboard")
                 navController.navigate("rider_dashboard") {
                     popUpTo("user_dashboard") { inclusive = true }
                 }
             }
         } ?: run {
-            Log.w("UserDashboard", "Timeout fetching role for user ${user.uid}")
-            error = "রোল পুনরুদ্ধারে সময় শেষ"
+            Log.w("UserDashboard", "Timeout fetching user data for ${user.uid}")
+            error = "তথ্য পুনরুদ্ধারে সময় শেষ"
             Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-            Log.d("UserDashboard", "Falling back to rider_dashboard due to timeout")
             navController.navigate("rider_dashboard") {
                 popUpTo("user_dashboard") { inclusive = true }
             }
@@ -230,7 +289,7 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        if (role == null && error == null) {
+        if (userData == null && error == null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
                 Spacer(modifier = Modifier.height(16.dp))

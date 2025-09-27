@@ -25,7 +25,6 @@ class AuthRepository(
 
     suspend fun signup(email: String, password: String, role: String): Result<User> {
         Log.d("AuthRepository", "Attempting signup for email: $email, role: $role")
-        // Validate role
         if (role !in listOf("Rider", "Conductor", "Owner")) {
             Log.e("AuthRepository", "Invalid role: $role")
             return Result.failure(Exception("Invalid role"))
@@ -62,7 +61,6 @@ class AuthRepository(
                 uid = userId,
                 email = result.user?.email ?: ""
             ) ?: User(uid = userId, email = result.user?.email ?: "", role = "Rider")
-            // Validate role
             if (user.role !in listOf("Rider", "Conductor", "Owner")) {
                 Log.e("AuthRepository", "Invalid role found: ${user.role}")
                 return Result.failure(Exception("Invalid role"))
@@ -71,6 +69,18 @@ class AuthRepository(
             Result.success(user)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Login failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateProfile(user: User): Result<User> {
+        Log.d("AuthRepository", "Attempting to update profile for user ${user.uid}")
+        return try {
+            database.getReference("users").child(user.uid).setValue(user).await()
+            Log.d("AuthRepository", "Profile updated successfully: ${user.name}, ${user.phone}")
+            Result.success(user)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Profile update failed: ${e.message}", e)
             Result.failure(e)
         }
     }
