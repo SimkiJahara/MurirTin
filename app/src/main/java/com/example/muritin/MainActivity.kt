@@ -86,6 +86,18 @@ fun AppNavHost(navController: NavHostController) {
                 }
             )
         }
+        composable("signup") {
+            Log.d("AppNavHost", "Navigating to SignUpScreen")
+            SignUpScreen(
+                navController = navController,
+                onSignUpSuccess = { user ->
+                    Log.d("AppNavHost", "Signup success, navigating to user_dashboard")
+                    navController.navigate("user_dashboard") {
+                        popUpTo("signup") { inclusive = true }
+                    }
+                }
+            )
+        }
         composable("profile") {
             Log.d("AppNavHost", "Navigating to ProfileScreen")
             val user = FirebaseAuth.getInstance().currentUser
@@ -231,10 +243,10 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
                     }
                     return@withTimeoutOrNull
                 }
-                Log.d("UserDashboard", "User data fetched: role=${userData?.role}, name=${userData?.name}, phone=${userData?.phone}")
+                Log.d("UserDashboard", "User data fetched: role=${userData?.role}, name=${userData?.name}, phone=${userData?.phone}, age=${userData?.age}")
 
-                // Check if profile is incomplete
-                if (userData?.name.isNullOrBlank() || userData?.phone.isNullOrBlank()) {
+                // Check if profile is incomplete (only if additional fields are needed)
+                if (userData?.name.isNullOrBlank() || userData?.phone.isNullOrBlank() || userData?.age == null) {
                     Log.d("UserDashboard", "Profile incomplete, navigating to profile")
                     navController.navigate("profile") {
                         popUpTo("user_dashboard") { inclusive = true }

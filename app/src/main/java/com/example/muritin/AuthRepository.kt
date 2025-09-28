@@ -23,8 +23,15 @@ class AuthRepository(
         return user
     }
 
-    suspend fun signup(email: String, password: String, role: String): Result<User> {
-        Log.d("AuthRepository", "Attempting signup for email: $email, role: $role")
+    suspend fun signup(
+        email: String,
+        password: String,
+        role: String,
+        name: String,
+        phone: String,
+        age: Int
+    ): Result<User> {
+        Log.d("AuthRepository", "Attempting signup for email: $email, role: $role, name: $name, phone: $phone, age: $age")
         if (role !in listOf("Rider", "Conductor", "Owner")) {
             Log.e("AuthRepository", "Invalid role: $role")
             return Result.failure(Exception("Invalid role"))
@@ -36,6 +43,9 @@ class AuthRepository(
             val user = User(
                 uid = userId,
                 email = email,
+                name = name,
+                phone = phone,
+                age = age,
                 role = role,
                 createdAt = System.currentTimeMillis()
             )
@@ -77,7 +87,7 @@ class AuthRepository(
         Log.d("AuthRepository", "Attempting to update profile for user ${user.uid}")
         return try {
             database.getReference("users").child(user.uid).setValue(user).await()
-            Log.d("AuthRepository", "Profile updated successfully: ${user.name}, ${user.phone}")
+            Log.d("AuthRepository", "Profile updated successfully: ${user.name}, ${user.phone}, ${user.age}")
             Result.success(user)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Profile update failed: ${e.message}", e)
@@ -129,6 +139,9 @@ class AuthRepository(
             val testUser = User(
                 uid = "test123",
                 email = "test@example.com",
+                name = "Test User",
+                phone = "+8801712345678",
+                age = 25,
                 role = "Conductor",
                 createdAt = System.currentTimeMillis()
             )
