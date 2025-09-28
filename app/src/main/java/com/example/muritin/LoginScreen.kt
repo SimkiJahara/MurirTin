@@ -2,8 +2,11 @@ package com.example.muritin
 
 import android.util.Patterns
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,6 +58,21 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // App logo and title
+            Image(
+                imageVector = Icons.Filled.DirectionsBus,
+                contentDescription = "মুড়ির টিন লোগো",
+                modifier = Modifier
+                    .size(80.dp)
+                    .semantics { contentDescription = "মুড়ির টিন লোগো" }
+            )
+            Text(
+                text = "মুড়ির টিন",
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()

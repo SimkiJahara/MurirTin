@@ -98,42 +98,6 @@ fun AppNavHost(navController: NavHostController) {
                 }
             )
         }
-        composable("profile") {
-            Log.d("AppNavHost", "Navigating to ProfileScreen")
-            val user = FirebaseAuth.getInstance().currentUser
-            if (user != null) {
-                val scope = rememberCoroutineScope()
-                var dbUser by remember { mutableStateOf<User?>(null) }
-                LaunchedEffect(user.uid) {
-                    val result = AuthRepository().getUser(user.uid)
-                    dbUser = result.getOrNull()
-                }
-                dbUser?.let {
-                    ProfileScreen(
-                        navController = navController,
-                        user = it,
-                        onProfileComplete = { updatedUser ->
-                            Log.d("AppNavHost", "Profile completed, navigating to user_dashboard")
-                            navController.navigate("user_dashboard") {
-                                popUpTo("profile") { inclusive = true }
-                            }
-                        }
-                    )
-                } ?: Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else {
-                LaunchedEffect(Unit) {
-                    Log.d("AppNavHost", "No user, navigating to login")
-                    navController.navigate("login") {
-                        popUpTo(navController.graph.id) { inclusive = true }
-                    }
-                }
-            }
-        }
         composable("user_dashboard") {
             Log.d("AppNavHost", "Navigating to UserDashboard")
             val user = FirebaseAuth.getInstance().currentUser
@@ -245,31 +209,24 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
                 }
                 Log.d("UserDashboard", "User data fetched: role=${userData?.role}, name=${userData?.name}, phone=${userData?.phone}, age=${userData?.age}")
 
-                // Check if profile is incomplete (only if additional fields are needed)
-                if (userData?.name.isNullOrBlank() || userData?.phone.isNullOrBlank() || userData?.age == null) {
-                    Log.d("UserDashboard", "Profile incomplete, navigating to profile")
-                    navController.navigate("profile") {
-                        popUpTo("user_dashboard") { inclusive = true }
+                // Navigate directly to appropriate dashboard based on role
+                when (userData?.role) {
+                    "Conductor" -> {
+                        Log.d("UserDashboard", "Navigating to conductor_dashboard")
+                        navController.navigate("conductor_dashboard") {
+                            popUpTo("user_dashboard") { inclusive = true }
+                        }
                     }
-                } else {
-                    when (userData?.role) {
-                        "Conductor" -> {
-                            Log.d("UserDashboard", "Navigating to conductor_dashboard")
-                            navController.navigate("conductor_dashboard") {
-                                popUpTo("user_dashboard") { inclusive = true }
-                            }
+                    "Owner" -> {
+                        Log.d("UserDashboard", "Navigating to owner_dashboard")
+                        navController.navigate("owner_dashboard") {
+                            popUpTo("user_dashboard") { inclusive = true }
                         }
-                        "Owner" -> {
-                            Log.d("UserDashboard", "Navigating to owner_dashboard")
-                            navController.navigate("owner_dashboard") {
-                                popUpTo("user_dashboard") { inclusive = true }
-                            }
-                        }
-                        else -> {
-                            Log.d("UserDashboard", "Navigating to rider_dashboard")
-                            navController.navigate("rider_dashboard") {
-                                popUpTo("user_dashboard") { inclusive = true }
-                            }
+                    }
+                    else -> {
+                        Log.d("UserDashboard", "Navigating to rider_dashboard")
+                        navController.navigate("rider_dashboard") {
+                            popUpTo("user_dashboard") { inclusive = true }
                         }
                     }
                 }
