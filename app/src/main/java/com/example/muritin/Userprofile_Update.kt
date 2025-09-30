@@ -91,7 +91,7 @@ fun Userprofile_Update(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("নিবন্ধন করুন") },
+                title = { Text("তথ্য পরিবর্তন") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
@@ -121,7 +121,7 @@ fun Userprofile_Update(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "আপনার অ্যাকাউন্ট তৈরি করুন",
+                        text = "তথ্য পরিবর্তন করুন",
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
@@ -232,7 +232,7 @@ fun Userprofile_Update(
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
-                            Text("পরিবর্তন করুন") //Button to save the changes
+                            Text("পরিবর্তন সংরক্ষণ করুন") //Button to save the changes
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
