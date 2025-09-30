@@ -134,6 +134,26 @@ class AuthRepository(
         }
     }
 
+    suspend fun updateUserProfile(userId: String, name: String, phone: String, age: Int, email: String): Result<Boolean> {
+        Log.d("AuthRepository", "Updating user profile for userId: $userId")
+        return try {
+            val userRef = database.getReference("users").child(userId)
+            val updates = mapOf(
+                "name" to name,
+                "phone" to phone,
+                "age" to age,
+                "email" to email
+            )
+            userRef.updateChildren(updates).await()  // updates fields in RTDB
+            Log.d("AuthRepository", "User profile updated")
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error updating user profile: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+
     suspend fun debugSaveTestData() {
         try {
             val testUser = User(

@@ -117,6 +117,7 @@ fun AppNavHost(navController: NavHostController) {
             val user = FirebaseAuth.getInstance().currentUser
             if (user != null) {
                 RiderDashboard(
+                    navController = navController,
                     user = user,
                     onLogout = {
                         Log.d("AppNavHost", "Logout triggered, navigating to login")
@@ -135,11 +136,16 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+        //Rider Account Info route
+        composable("rider_account_info"){
+            Rider_Account_Info(navController = navController)
+        }
         composable("conductor_dashboard") {
             Log.d("AppNavHost", "Navigating to ConductorDashboard")
             val user = FirebaseAuth.getInstance().currentUser
             if (user != null) {
                 ConductorDashboard(
+                    navController = navController,
                     user = user,
                     onLogout = {
                         Log.d("AppNavHost", "Logout triggered, navigating to login")
@@ -163,6 +169,7 @@ fun AppNavHost(navController: NavHostController) {
             val user = FirebaseAuth.getInstance().currentUser
             if (user != null) {
                 OwnerDashboard(
+                    navController = navController,
                     user = user,
                     onLogout = {
                         Log.d("AppNavHost", "Logout triggered, navigating to login")
@@ -180,6 +187,14 @@ fun AppNavHost(navController: NavHostController) {
                     }
                 }
             }
+        }
+        //Show Account Info route
+        composable("show_account_info"){
+            Show_Account_Info(navController = navController)
+        }
+        //Show Account Info route
+        composable("profile_update"){
+            Userprofile_Update(navController = navController)
         }
     }
 }
@@ -270,7 +285,7 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RiderDashboard(user: FirebaseUser, onLogout: () -> Unit) {
+fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogout: () -> Unit) {
     val context = LocalContext.current
     Log.d("RiderDashboard", "Rendering RiderDashboard for ${user.email}")
 
@@ -288,6 +303,24 @@ fun RiderDashboard(user: FirebaseUser, onLogout: () -> Unit) {
         Text("স্বাগতম, ${user.email}")
 
         Spacer(modifier = Modifier.height(24.dp))
+
+        // Placeholder button for account information.
+        Button(
+            onClick = {
+                val user = FirebaseAuth.getInstance().currentUser
+                if (user != null) {
+                    // If user is logged in, go to account info page
+                    navController.navigate("rider_account_info")
+                } else {
+                    // User not logged in, show a message or redirect to login
+                    Toast.makeText(context, "দয়া করে লগইন করুন", Toast.LENGTH_SHORT).show()
+                    navController.navigate("login")
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("অ্যাকাউন্ট এর তথ্য") // Label for account info.
+        }
 
         Button(
             onClick = {
@@ -314,7 +347,7 @@ fun RiderDashboard(user: FirebaseUser, onLogout: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConductorDashboard(user: FirebaseUser, onLogout: () -> Unit) {
+fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onLogout: () -> Unit) {
     val context = LocalContext.current
     Log.d("ConductorDashboard", "Rendering ConductorDashboard for ${user.email}")
 
@@ -330,6 +363,26 @@ fun ConductorDashboard(user: FirebaseUser, onLogout: () -> Unit) {
             style = MaterialTheme.typography.headlineMedium
         )
         Text("স্বাগতম, ${user.email}")
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                val user = FirebaseAuth.getInstance().currentUser
+                if (user != null) {
+                    // User is logged in, go to account info page
+                    Toast.makeText(context, "অ্যাকাউন্ট এর তথ্য আসবে", Toast.LENGTH_SHORT).show()
+                    navController.navigate("show_account_info")
+                } else {
+                    // User not logged in, show a message or redirect to login
+                    Toast.makeText(context, "দয়া করে লগইন করুন", Toast.LENGTH_SHORT).show()
+                    navController.navigate("login")
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("অ্যাকাউন্ট এর তথ্য") // Label of the button for showing info
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -358,7 +411,7 @@ fun ConductorDashboard(user: FirebaseUser, onLogout: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OwnerDashboard(user: FirebaseUser, onLogout: () -> Unit) {
+fun OwnerDashboard(navController: NavHostController, user: FirebaseUser, onLogout: () -> Unit) {
     val context = LocalContext.current
     Log.d("OwnerDashboard", "Rendering OwnerDashboard for ${user.email}")
 
@@ -374,6 +427,26 @@ fun OwnerDashboard(user: FirebaseUser, onLogout: () -> Unit) {
             style = MaterialTheme.typography.headlineMedium
         )
         Text("স্বাগতম, ${user.email}")
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                val user = FirebaseAuth.getInstance().currentUser
+                if (user != null) {
+                    // User is logged in, go to account info page
+                    Toast.makeText(context, "অ্যাকাউন্ট এর তথ্য আসবে", Toast.LENGTH_SHORT).show()
+                    navController.navigate("show_account_info")
+                } else {
+                    // User not logged in, show a message or redirect to login
+                    Toast.makeText(context, "দয়া করে লগইন করুন", Toast.LENGTH_SHORT).show()
+                    navController.navigate("login")
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("অ্যাকাউন্ট এর তথ্য") // Label of the button for showing info
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 

@@ -14,8 +14,8 @@ fun MuriTinTheme(
 ) {
     MaterialTheme(
         colorScheme = lightColorScheme(
-            primary = Color(0xFF00796B), // Teal for buttons, icons
-            secondary = Color(0xFF4DB6AC), // Lighter teal for accents
+            primary = Color(0xFF6650a4), // Purple for buttons, icons
+            secondary = Color(0xFF625b71), // Purplegrey for accents
             error = Color(0xFFB71C1C), // Red for errors
             background = Color(0xFFF5F5F5), // Light gray background
             surface = Color.White // Card and surface backgrounds
