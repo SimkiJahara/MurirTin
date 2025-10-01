@@ -136,10 +136,7 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
-        //Rider Account Info route
-        composable("rider_account_info"){
-            Rider_Account_Info(navController = navController)
-        }
+
         composable("conductor_dashboard") {
             Log.d("AppNavHost", "Navigating to ConductorDashboard")
             val user = FirebaseAuth.getInstance().currentUser
@@ -304,24 +301,32 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Placeholder button for account information.
+        // Button for past trips (placeholder for Week 5)
         Button(
             onClick = {
-                val user = FirebaseAuth.getInstance().currentUser
-                if (user != null) {
-                    // If user is logged in, go to account info page
-                    navController.navigate("rider_account_info")
-                } else {
-                    // User not logged in, show a message or redirect to login
-                    Toast.makeText(context, "দয়া করে লগইন করুন", Toast.LENGTH_SHORT).show()
-                    navController.navigate("login")
-                }
+                Toast.makeText(context, "পূর্ববর্তী যাত্রা এর তথ্য আসবে", Toast.LENGTH_SHORT).show()
+                // TODO: Implement PastTripsScreen in Week 5
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("অ্যাকাউন্ট এর তথ্য") // Label for account info.
+            Text("পূর্ববর্তী যাত্রাসমূহ")
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Button for account info
+        Button(
+            onClick = {
+                navController.navigate("show_account_info")
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("অ্যাকাউন্ট এর তথ্য")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Button for booking tickets
         Button(
             onClick = {
                 Toast.makeText(context, "টিকিট বুক করার পর্দা আসবে", Toast.LENGTH_SHORT).show()
@@ -344,6 +349,9 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
         }
     }
 }
+
+
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

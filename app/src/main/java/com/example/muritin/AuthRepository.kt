@@ -172,4 +172,15 @@ class AuthRepository(
             Log.e("AuthRepository", "Failed to save test data: ${e.message}", e)
         }
     }
+    suspend fun deleteUserData(userId: String): Result<Boolean> {
+        Log.d("AuthRepository", "Deleting user data for userId: $userId")
+        return try {
+            database.getReference("users").child(userId).removeValue().await()
+            Log.d("AuthRepository", "User data deleted successfully")
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error deleting user data: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }
