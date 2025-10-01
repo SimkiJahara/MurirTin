@@ -1,5 +1,6 @@
 package com.example.muritin
 
+import android.util.Log
 import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -18,7 +19,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await // Added import
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +36,12 @@ fun LoginScreen(
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // State for password reset dialog
+    var showResetDialog by remember { mutableStateOf(false) }
+    var resetEmail by remember { mutableStateOf("") }
+    var resetLoading by remember { mutableStateOf(false) }
+    var resetError by remember { mutableStateOf<String?>(null) }
 
     fun isValidEmail(email: String): Boolean {
         return Patterns.EMAIL_ADDRESS.matcher(email).matches()
@@ -164,7 +173,21 @@ fun LoginScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "পাসওয়ার্ড ভুলে গেছেন?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable {
+                                showResetDialog = true
+                            }
+                            .semantics { contentDescription = "পাসওয়ার্ড রিসেট লিঙ্ক" },
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
                         text = "অ্যাকাউন্ট নেই? এখানে একটি তৈরি করুন",
@@ -180,5 +203,71 @@ fun LoginScreen(
                 }
             }
         }
+    }
+
+    // Password Reset Dialog
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("পাসওয়ার্ড রিসেট করুন") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = resetEmail,
+                        onValueChange = { resetEmail = it },
+                        label = { Text("ইমেইল") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = !isValidEmail(resetEmail) && resetEmail.isNotBlank()
+                    )
+                    if (resetError != null) {
+                        Text(
+                            text = resetError ?: "",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (!isValidEmail(resetEmail)) {
+                            resetError = "বৈধ ইমেইল প্রয়োজন"
+                        } else {
+                            resetLoading = true
+                            resetError = null
+                            scope.launch {
+                                try {
+                                    FirebaseAuth.getInstance().sendPasswordResetEmail(resetEmail).await()
+                                    Toast.makeText(context, "পাসওয়ার্ড রিসেট ইমেইল পাঠানো হয়েছে", Toast.LENGTH_LONG).show()
+                                    showResetDialog = false
+                                } catch (e: Exception) {
+                                    Log.e("LoginScreen", "Password reset failed: ${e.message}", e)
+                                    resetError = e.message ?: "রিসেট ব্যর্থ"
+                                } finally {
+                                    resetLoading = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = !resetLoading
+                ) {
+                    if (resetLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text("পাঠান")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("বাতিল")
+                }
+            }
+        )
     }
 }
