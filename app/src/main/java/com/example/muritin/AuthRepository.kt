@@ -17,12 +17,6 @@ class AuthRepository(
         Log.d("AuthRepository", "Database URL: ${database.reference.toString()}")
     }
 
-    fun getCurrentUser(): FirebaseUser? {
-        val user = auth.currentUser
-        Log.d("AuthRepository", "getCurrentUser: ${user?.email ?: "null"}, uid: ${user?.uid ?: "null"}")
-        return user
-    }
-
     suspend fun signup(
         email: String,
         password: String,
@@ -35,6 +29,20 @@ class AuthRepository(
         if (role !in listOf("Rider", "Conductor", "Owner")) {
             Log.e("AuthRepository", "Invalid role: $role")
             return Result.failure(Exception("Invalid role"))
+        }
+        // Check if the current user is an Owner when registering a Conductor
+        if (role == "Conductor") {
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                val currentUserRole = getUserRole(currentUser.uid)
+                if (currentUserRole != "Owner") {
+                    Log.e("AuthRepository", "Only Owners can register Conductors")
+                    return Result.failure(Exception("Only Bus Owners can register Conductors"))
+                }
+            } else {
+                Log.e("AuthRepository", "No authenticated user, cannot register Conductor")
+                return Result.failure(Exception("Must be logged in as a Bus Owner to register Conductors"))
+            }
         }
         return try {
             val result = auth.createUserWithEmailAndPassword(email, password).await()
@@ -83,17 +91,6 @@ class AuthRepository(
         }
     }
 
-    suspend fun updateProfile(user: User): Result<User> {
-        Log.d("AuthRepository", "Attempting to update profile for user ${user.uid}")
-        return try {
-            database.getReference("users").child(user.uid).setValue(user).await()
-            Log.d("AuthRepository", "Profile updated successfully: ${user.name}, ${user.phone}, ${user.age}")
-            Result.success(user)
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Profile update failed: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
 
     suspend fun getUser(userId: String): Result<User> {
         Log.d("AuthRepository", "Fetching user data for userId: $userId")
@@ -110,11 +107,7 @@ class AuthRepository(
             Result.failure(e)
         }
     }
-
-    fun logout() {
-        Log.d("AuthRepository", "Logging out")
-        auth.signOut()
-    }
+    
 
     suspend fun getUserRole(userId: String): String {
         Log.d("AuthRepository", "Fetching role for userId: $userId")
@@ -153,7 +146,6 @@ class AuthRepository(
         }
     }
 
-
     suspend fun debugSaveTestData() {
         try {
             val testUser = User(
@@ -172,6 +164,7 @@ class AuthRepository(
             Log.e("AuthRepository", "Failed to save test data: ${e.message}", e)
         }
     }
+
     suspend fun deleteUserData(userId: String): Result<Boolean> {
         Log.d("AuthRepository", "Deleting user data for userId: $userId")
         return try {
@@ -184,3 +177,4 @@ class AuthRepository(
         }
     }
 }
+

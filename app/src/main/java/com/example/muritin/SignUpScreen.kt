@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,6 +33,21 @@ fun SignUpScreen(
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var currentUserRole by remember { mutableStateOf<String?>(null) }
+    var roleLoading by remember { mutableStateOf(true) }
+
+    // Fetch current user's role to determine if they can select Conductor
+    LaunchedEffect(Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser != null) {
+            val result = AuthRepository().getUserRole(currentUser.uid)
+            currentUserRole = result
+            roleLoading = false
+        } else {
+            currentUserRole = null
+            roleLoading = false
+        }
+    }
 
     // Validation functions
     fun isValidPhone(phone: String): Boolean {
@@ -67,206 +83,217 @@ fun SignUpScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
+            if (roleLoading) {
+                CircularProgressIndicator()
+            } else {
+                Card(
                     modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Text(
-                        text = "আপনার অ্যাকাউন্ট তৈরি করুন",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("নাম") },
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "নাম ক্ষেত্র" },
-                        isError = name.isBlank() && error != null
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { phone = it },
-                        label = { Text("ফোন নম্বর (+880)") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "ফোন নম্বর ক্ষেত্র" },
-                        isError = !isValidPhone(phone) && phone.isNotBlank()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = age,
-                        onValueChange = { age = it },
-                        label = { Text("বয়স") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "বয়স ক্ষেত্র" },
-                        isError = !isValidAge(age) && age.isNotBlank()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = { Text("ইমেইল") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "ইমেইল ক্ষেত্র" },
-                        isError = !isValidEmail(email) && email.isNotBlank()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text("পাসওয়ার্ড") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "পাসওয়ার্ড ক্ষেত্র" },
-                        isError = password.length < 6 && password.isNotBlank()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Role selection dropdown
-                    var expanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = !expanded }
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Text(
+                            text = "আপনার অ্যাকাউন্ট তৈরি করুন",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
                         OutlinedTextField(
-                            value = when (role) {
-                                "Rider" -> "রাইডার"
-                                "Conductor" -> "কন্ডাক্টর"
-                                "Owner" -> "ওনার"
-                                else -> "রাইডার"
-                            },
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("ভূমিকা") },
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                            },
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text("নাম") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor()
-                                .semantics { contentDescription = "ভূমিকা নির্বাচন" }
+                                .semantics { contentDescription = "নাম ক্ষেত্র" },
+                            isError = name.isBlank() && error != null
                         )
-                        ExposedDropdownMenu(
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = phone,
+                            onValueChange = { phone = it },
+                            label = { Text("ফোন নম্বর (+880)") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = "ফোন নম্বর ক্ষেত্র" },
+                            isError = !isValidPhone(phone) && phone.isNotBlank()
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = age,
+                            onValueChange = { age = it },
+                            label = { Text("বয়স") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = "বয়স ক্ষেত্র" },
+                            isError = !isValidAge(age) && age.isNotBlank()
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = { email = it },
+                            label = { Text("ইমেইল") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = "ইমেইল ক্ষেত্র" },
+                            isError = !isValidEmail(email) && email.isNotBlank()
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            label = { Text("পাসওয়ার্ড") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = "পাসওয়ার্ড ক্ষেত্র" },
+                            isError = password.length < 6 && password.isNotBlank()
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Role selection dropdown
+                        var expanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(
                             expanded = expanded,
-                            onDismissRequest = { expanded = false }
+                            onExpandedChange = { expanded = !expanded }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("রাইডার") },
-                                onClick = {
-                                    role = "Rider"
-                                    expanded = false
-                                }
+                            OutlinedTextField(
+                                value = when (role) {
+                                    "Rider" -> "রাইডার"
+                                    "Conductor" -> "কন্ডাক্টর"
+                                    "Owner" -> "ওনার"
+                                    else -> "রাইডার"
+                                },
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("ভূমিকা") },
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor()
+                                    .semantics { contentDescription = "ভূমিকা নির্বাচন" }
                             )
-                            DropdownMenuItem(
-                                text = { Text("কন্ডাক্টর") },
-                                onClick = {
-                                    role = "Conductor"
-                                    expanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("ওনার") },
-                                onClick = {
-                                    role = "Owner"
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            if (name.isBlank()) {
-                                error = "নাম প্রয়োজন"
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                }
-                            } else if (!isValidPhone(phone)) {
-                                error = "বৈধ ফোন নম্বর প্রয়োজন (+8801Xxxxxxxxx)"
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                }
-                            } else if (!isValidAge(age)) {
-                                error = "বয়স ১৮-১০০ এর মধ্যে হতে হবে"
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                }
-                            } else if (!isValidEmail(email)) {
-                                error = "বৈধ ইমেইল প্রয়োজন"
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                }
-                            } else if (password.length < 6) {
-                                error = "পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                }
-                            } else {
-                                isLoading = true
-                                error = null
-                                scope.launch {
-                                    val result = AuthRepository().signup(
-                                        email = email,
-                                        password = password,
-                                        role = role,
-                                        name = name,
-                                        phone = phone,
-                                        age = age.toIntOrNull() ?: 0
-                                    )
-                                    isLoading = false
-                                    when {
-                                        result.isSuccess -> {
-                                            Toast.makeText(context, "নিবন্ধন সফল", Toast.LENGTH_SHORT).show()
-                                            result.getOrNull()?.let { onSignUpSuccess(it) }
-                                        }
-                                        else -> {
-                                            error = result.exceptionOrNull()?.message ?: "নিবন্ধন ব্যর্থ"
+                            ExposedDropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("রাইডার") },
+                                    onClick = {
+                                        role = "Rider"
+                                        expanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("কন্ডাক্টর") },
+                                    onClick = {
+                                        if (currentUserRole == "Owner") {
+                                            role = "Conductor"
+                                            expanded = false
+                                        } else {
                                             scope.launch {
-                                                snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                                snackbarHostState.showSnackbar("শুধুমাত্র ওনাররা কন্ডাক্টর নিবন্ধন করতে পারেন")
+                                            }
+                                        }
+                                    },
+                                    enabled = currentUserRole == "Owner"
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("ওনার") },
+                                    onClick = {
+                                        role = "Owner"
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                if (name.isBlank()) {
+                                    error = "নাম প্রয়োজন"
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                    }
+                                } else if (!isValidPhone(phone)) {
+                                    error = "বৈধ ফোন নম্বর প্রয়োজন (+8801Xxxxxxxxx)"
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                    }
+                                } else if (!isValidAge(age)) {
+                                    error = "বয়স ১৮-১০০ এর মধ্যে হতে হবে"
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                    }
+                                } else if (!isValidEmail(email)) {
+                                    error = "বৈধ ইমেইল প্রয়োজন"
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                    }
+                                } else if (password.length < 6) {
+                                    error = "পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                    }
+                                } else {
+                                    isLoading = true
+                                    error = null
+                                    scope.launch {
+                                        val result = AuthRepository().signup(
+                                            email = email,
+                                            password = password,
+                                            role = role,
+                                            name = name,
+                                            phone = phone,
+                                            age = age.toIntOrNull() ?: 0
+                                        )
+                                        isLoading = false
+                                        when {
+                                            result.isSuccess -> {
+                                                Toast.makeText(context, "নিবন্ধন সফল", Toast.LENGTH_SHORT).show()
+                                                result.getOrNull()?.let { onSignUpSuccess(it) }
+                                            }
+                                            else -> {
+                                                error = result.exceptionOrNull()?.message ?: "নিবন্ধন ব্যর্থ"
+                                                scope.launch {
+                                                    snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = "নিবন্ধন বোতাম" },
+                            enabled = !isLoading
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("নিবন্ধন করুন")
                             }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "নিবন্ধন বোতাম" },
-                        enabled = !isLoading
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Text("নিবন্ধন করুন")
                         }
                     }
                 }
