@@ -1,90 +1,63 @@
 package com.example.muritin
 
-import android.net.Uri
 import android.util.Log
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageReference
 import kotlinx.coroutines.tasks.await
 
 class BusRepository(
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val database: FirebaseDatabase = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/"),
-    private val storage: FirebaseStorage = FirebaseStorage.getInstance()
+    private val database: FirebaseDatabase = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/")
 ) {
-    init {
-        Log.d("BusRepository", "Initializing BusRepository")
-    }
-
-    suspend fun registerBus(bus: Bus): Result<String> {
-        Log.d("BusRepository", "Attempting to register bus: ${bus.name}")
-        if (auth.currentUser == null) {
-            return Result.failure(Exception("No authenticated user"))
-        }
+    suspend fun registerBus(bus: Bus): Result<Bus> {
+        Log.d("BusRepository", "Attempting to register bus: $bus")
         return try {
-            val busId = database.getReference("buses").push().key
-                ?: return Result.failure(Exception("Could not generate bus ID"))
-            val busWithId = bus.copy(
-                busId = busId,
-                ownerUid = auth.currentUser!!.uid
-            )
+            val busId = database.getReference("buses").push().key ?: return Result.failure(Exception("No bus ID"))
+            val busWithId = bus.copy(busId = busId)
             database.getReference("buses").child(busId).setValue(busWithId).await()
-            Log.d("BusRepository", "Bus registered successfully, busId: $busId")
-            Result.success(busId)
+            Log.d("BusRepository", "Bus registered successfully: $busWithId")
+            Result.success(busWithId)
         } catch (e: Exception) {
             Log.e("BusRepository", "Bus registration failed: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    suspend fun uploadDocument(busId: String, type: String, uri: Uri): Result<String> {
-        Log.d("BusRepository", "Uploading $type document for busId: $busId")
+    suspend fun assignConductor(busId: String, conductorId: String): Result<Boolean> {
+        Log.d("BusRepository", "Assigning conductor $conductorId to bus $busId")
         return try {
-            val fileExtension = when (type) {
-                "fitness", "tax" -> "pdf"
-                else -> "pdf"
-            }
-            val storageRef: StorageReference = storage.getReference("buses/$busId/${type}_doc.$fileExtension")
-            storageRef.putFile(uri).await()
-            val downloadUrl: String = storageRef.downloadUrl.await().toString()
-            database.getReference("buses").child(busId).child("${type}Url").setValue(downloadUrl).await()
-            Log.d("BusRepository", "$type document uploaded successfully: $downloadUrl")
-            Result.success(downloadUrl)
+            database.getReference("buses").child(busId).child("conductorId").setValue(conductorId).await()
+            Log.d("BusRepository", "Conductor assigned successfully")
+            Result.success(true)
         } catch (e: Exception) {
-            Log.e("BusRepository", "Document upload failed: ${e.message}", e)
+            Log.e("BusRepository", "Conductor assignment failed: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    suspend fun getBusesForOwner(ownerUid: String): List<Bus> {
-        Log.d("BusRepository", "Fetching buses for ownerUid: $ownerUid")
+    suspend fun getBusesForOwner(ownerId: String): List<Bus> {
+        Log.d("BusRepository", "Fetching buses for owner $ownerId")
         return try {
-            val snapshot = database.getReference("buses")
-                .orderByChild("ownerUid").equalTo(ownerUid).get().await()
-            snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
+            val snapshot = database.getReference("buses").orderByChild("ownerId").equalTo(ownerId).get().await()
+            val buses = snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
+            Log.d("BusRepository", "Fetched ${buses.size} buses")
+            buses
         } catch (e: Exception) {
             Log.e("BusRepository", "Error fetching buses: ${e.message}", e)
             emptyList()
         }
     }
 
-    suspend fun assignConductor(busId: String, conductorUid: String): Result<Boolean> {
-        Log.d("BusRepository", "Assigning conductor $conductorUid to bus $busId")
+    suspend fun getConductorsForOwner(ownerId: String): List<User> {
+        Log.d("BusRepository", "Fetching conductors for owner $ownerId")
         return try {
-            val busSnapshot = database.getReference("buses").child(busId).get().await()
-            val bus = busSnapshot.getValue(Bus::class.java)
-                ?: return Result.failure(Exception("Bus not found"))
-            if (bus.ownerUid != auth.currentUser?.uid) {
-                return Result.failure(Exception("Not authorized"))
+            val snapshot = database.getReference("users").orderByChild("createdBy").equalTo(ownerId).get().await()
+            val conductors = snapshot.children.mapNotNull { snap ->
+                snap.getValue(User::class.java)?.copy(uid = snap.key ?: "")
             }
-            database.getReference("buses").child(busId).child("conductorUid").setValue(conductorUid).await()
-            database.getReference("users").child(conductorUid).child("assignedBusId").setValue(busId).await()
-            Log.d("BusRepository", "Conductor assigned successfully")
-            Result.success(true)
+            Log.d("BusRepository", "Fetched ${conductors.size} conductors")
+            conductors
         } catch (e: Exception) {
-            Log.e("BusRepository", "Assignment failed: ${e.message}", e)
-            Result.failure(e)
+            Log.e("BusRepository", "Error fetching conductors: ${e.message}", e)
+            emptyList()
         }
     }
 }

@@ -55,7 +55,8 @@ class AuthRepository(
                 phone = phone,
                 age = age,
                 role = role,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+                ownerId = if (role == "Conductor") auth.currentUser?.uid else null  // Set ownerId for Conductors
             )
             Log.d("AuthRepository", "Attempting to save user: $user to path: users/$userId")
             database.getReference("users").child(userId).setValue(user).await()
@@ -177,4 +178,3 @@ class AuthRepository(
         }
     }
 }
-
