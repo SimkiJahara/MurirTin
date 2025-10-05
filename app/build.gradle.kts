@@ -1,3 +1,4 @@
+// app/build.gradle
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -54,6 +55,7 @@ dependencies {
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.database.ktx)
     implementation(libs.firebase.messaging.ktx)
+    implementation(libs.firebase.storage.ktx) // Added
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
