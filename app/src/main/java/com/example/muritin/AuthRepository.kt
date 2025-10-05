@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.tasks.await
+import com.google.firebase.auth.EmailAuthProvider
 
 class AuthRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -23,14 +24,18 @@ class AuthRepository(
         role: String,
         name: String,
         phone: String,
-        age: Int
+        age: Int,
+        ownerPassword: String? = null // Owner's password for re-authentication
     ): Result<User> {
         Log.d("AuthRepository", "Attempting signup for email: $email, role: $role, name: $name, phone: $phone, age: $age")
         if (role !in listOf("Rider", "Conductor", "Owner")) {
             Log.e("AuthRepository", "Invalid role: $role")
             return Result.failure(Exception("Invalid role"))
         }
+
         // Check if the current user is an Owner when registering a Conductor
+        var ownerId: String? = null
+        var ownerEmail: String? = null
         if (role == "Conductor") {
             val currentUser = auth.currentUser
             if (currentUser != null) {
@@ -39,15 +44,33 @@ class AuthRepository(
                     Log.e("AuthRepository", "Only Owners can register Conductors")
                     return Result.failure(Exception("Only Bus Owners can register Conductors"))
                 }
+                if (ownerPassword == null) {
+                    Log.e("AuthRepository", "Owner password required to register Conductor")
+                    return Result.failure(Exception("Owner password required"))
+                }
+                // Re-authenticate the owner
+                try {
+                    val credential = EmailAuthProvider.getCredential(currentUser.email!!, ownerPassword)
+                    currentUser.reauthenticate(credential).await()
+                    ownerId = currentUser.uid
+                    ownerEmail = currentUser.email
+                    Log.d("AuthRepository", "Owner re-authenticated: ${currentUser.email}")
+                } catch (e: Exception) {
+                    Log.e("AuthRepository", "Owner re-authentication failed: ${e.message}", e)
+                    return Result.failure(Exception("Invalid owner credentials"))
+                }
             } else {
                 Log.e("AuthRepository", "No authenticated user, cannot register Conductor")
                 return Result.failure(Exception("Must be logged in as a Bus Owner to register Conductors"))
             }
         }
+
         return try {
+            // Create the new user
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val userId = result.user?.uid ?: return Result.failure(Exception("No user ID"))
             Log.d("AuthRepository", "Signup successful, userId: $userId")
+
             val user = User(
                 uid = userId,
                 email = email,
@@ -56,11 +79,24 @@ class AuthRepository(
                 age = age,
                 role = role,
                 createdAt = System.currentTimeMillis(),
-                ownerId = if (role == "Conductor") auth.currentUser?.uid else null  // Set ownerId for Conductors
+                ownerId = if (role == "Conductor") ownerId else null
             )
             Log.d("AuthRepository", "Attempting to save user: $user to path: users/$userId")
             database.getReference("users").child(userId).setValue(user).await()
             Log.d("AuthRepository", "User data saved to database: $role")
+
+            // If conductor, sign out the new user and sign back in as owner
+            if (role == "Conductor" && ownerId != null && ownerPassword != null && ownerEmail != null) {
+                try {
+                    auth.signOut()
+                    auth.signInWithEmailAndPassword(ownerEmail, ownerPassword).await()
+                    Log.d("AuthRepository", "Signed back in as owner: $ownerEmail")
+                } catch (e: Exception) {
+                    Log.e("AuthRepository", "Failed to sign back in as owner: ${e.message}", e)
+                    return Result.failure(Exception("Failed to restore owner session"))
+                }
+            }
+
             Result.success(user)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Signup failed: ${e.message}", e)
@@ -92,7 +128,6 @@ class AuthRepository(
         }
     }
 
-
     suspend fun getUser(userId: String): Result<User> {
         Log.d("AuthRepository", "Fetching user data for userId: $userId")
         return try {
@@ -108,7 +143,6 @@ class AuthRepository(
             Result.failure(e)
         }
     }
-
 
     suspend fun getUserRole(userId: String): String {
         Log.d("AuthRepository", "Fetching role for userId: $userId")
@@ -138,7 +172,7 @@ class AuthRepository(
                 "age" to age,
                 "email" to email
             )
-            userRef.updateChildren(updates).await()  // updates fields in RTDB
+            userRef.updateChildren(updates).await()
             Log.d("AuthRepository", "User profile updated")
             Result.success(true)
         } catch (e: Exception) {

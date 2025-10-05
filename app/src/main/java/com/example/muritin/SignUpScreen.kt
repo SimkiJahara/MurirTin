@@ -1,5 +1,6 @@
 package com.example.muritin
 
+import android.util.Log
 import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -21,7 +22,7 @@ import kotlinx.coroutines.launch
 fun SignUpScreen(
     navController: NavHostController,
     onSignUpSuccess: (User) -> Unit,
-    preSelectedRole: String = "Rider" // Added parameter
+    preSelectedRole: String = "Rider"
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -30,6 +31,7 @@ fun SignUpScreen(
     var age by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var ownerPassword by remember { mutableStateOf("") } // Add state for owner password
     var role by remember { mutableStateOf(preSelectedRole) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -37,7 +39,6 @@ fun SignUpScreen(
     var currentUserRole by remember { mutableStateOf<String?>(null) }
     var roleLoading by remember { mutableStateOf(true) }
 
-    // Fetch current user's role to determine if they can select Conductor
     LaunchedEffect(Unit) {
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser != null) {
@@ -50,7 +51,6 @@ fun SignUpScreen(
         }
     }
 
-    // Validation functions
     fun isValidPhone(phone: String): Boolean {
         val cleanedPhone = phone.replace("\\s+".toRegex(), "")
         return cleanedPhone.matches(Regex("^(\\+8801|01)[3-9]\\d{8}$"))
@@ -104,7 +104,6 @@ fun SignUpScreen(
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
-
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it },
@@ -114,9 +113,7 @@ fun SignUpScreen(
                                 .semantics { contentDescription = "নাম ক্ষেত্র" },
                             isError = name.isBlank() && error != null
                         )
-
                         Spacer(modifier = Modifier.height(8.dp))
-
                         OutlinedTextField(
                             value = phone,
                             onValueChange = { phone = it },
@@ -126,9 +123,7 @@ fun SignUpScreen(
                                 .semantics { contentDescription = "ফোন নম্বর ক্ষেত্র" },
                             isError = !isValidPhone(phone) && phone.isNotBlank()
                         )
-
                         Spacer(modifier = Modifier.height(8.dp))
-
                         OutlinedTextField(
                             value = age,
                             onValueChange = { age = it },
@@ -138,9 +133,7 @@ fun SignUpScreen(
                                 .semantics { contentDescription = "বয়স ক্ষেত্র" },
                             isError = !isValidAge(age) && age.isNotBlank()
                         )
-
                         Spacer(modifier = Modifier.height(8.dp))
-
                         OutlinedTextField(
                             value = email,
                             onValueChange = { email = it },
@@ -150,9 +143,7 @@ fun SignUpScreen(
                                 .semantics { contentDescription = "ইমেইল ক্ষেত্র" },
                             isError = !isValidEmail(email) && email.isNotBlank()
                         )
-
                         Spacer(modifier = Modifier.height(8.dp))
-
                         OutlinedTextField(
                             value = password,
                             onValueChange = { password = it },
@@ -163,10 +154,20 @@ fun SignUpScreen(
                                 .semantics { contentDescription = "পাসওয়ার্ড ক্ষেত্র" },
                             isError = password.length < 6 && password.isNotBlank()
                         )
-
+                        if (preSelectedRole == "Conductor") {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = ownerPassword,
+                                onValueChange = { ownerPassword = it },
+                                label = { Text("ওনারের পাসওয়ার্ড") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .semantics { contentDescription = "ওনারের পাসওয়ার্ড ক্ষেত্র" },
+                                isError = ownerPassword.length < 6 && ownerPassword.isNotBlank()
+                            )
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
-
-                        // Role selection dropdown (disabled for Conductor)
                         if (preSelectedRole == "Conductor") {
                             OutlinedTextField(
                                 value = "কন্ডাক্টর",
@@ -194,9 +195,7 @@ fun SignUpScreen(
                                     onValueChange = {},
                                     readOnly = true,
                                     label = { Text("ভূমিকা") },
-                                    trailingIcon = {
-                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                                    },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .menuAnchor()
@@ -237,41 +236,30 @@ fun SignUpScreen(
                                 }
                             }
                         }
-
                         Spacer(modifier = Modifier.height(16.dp))
-
                         Button(
                             onClick = {
                                 if (name.isBlank()) {
                                     error = "নাম প্রয়োজন"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                    }
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else if (!isValidPhone(phone)) {
                                     error = "বৈধ ফোন নম্বর প্রয়োজন (+8801Xxxxxxxxx)"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                    }
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else if (!isValidAge(age)) {
                                     error = "বয়স ১৮-১০০ এর মধ্যে হতে হবে"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                    }
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else if (!isValidEmail(email)) {
                                     error = "বৈধ ইমেইল প্রয়োজন"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                    }
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else if (password.length < 6) {
                                     error = "পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                    }
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                } else if (preSelectedRole == "Conductor" && ownerPassword.length < 6) {
+                                    error = "ওনারের পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else if (preSelectedRole == "Conductor" && currentUserRole != "Owner") {
                                     error = "শুধুমাত্র ওনাররা কন্ডাক্টর নিবন্ধন করতে পারেন"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                    }
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else {
                                     isLoading = true
                                     error = null
@@ -282,7 +270,8 @@ fun SignUpScreen(
                                             role = role,
                                             name = name,
                                             phone = phone,
-                                            age = age.toIntOrNull() ?: 0
+                                            age = age.toIntOrNull() ?: 0,
+                                            ownerPassword = if (preSelectedRole == "Conductor") ownerPassword else null
                                         )
                                         isLoading = false
                                         when {

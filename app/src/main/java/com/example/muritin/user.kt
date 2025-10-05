@@ -8,5 +8,5 @@ data class User(
     val age: Int? = null,
     val role: String = "Rider",
     val createdAt: Long = 0L,
-    val ownerId: String? = null  // New field for Conductors
+    val ownerId: String? = null // Added for conductors
 )

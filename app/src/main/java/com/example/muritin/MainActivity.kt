@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
                 .build()
         )
         super.onCreate(savedInstanceState)
-
         try {
             FirebaseApp.initializeApp(this)
             Log.d("MainActivity", "Firebase initialized successfully")
@@ -201,8 +200,23 @@ fun AppNavHost(navController: NavHostController) {
         composable("profile_update") {
             Userprofile_Update(navController = navController)
         }
+        composable("conductor_list") {
+            Log.d("AppNavHost", "Navigating to ConductorListScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

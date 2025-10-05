@@ -16,8 +16,10 @@ materialIconsExtended = "1.6.8"
 lifecycleViewmodelCompose = "2.8.4"
 googleServices = "4.4.2"
 coroutines = "1.7.3" # Added for coroutines
+mapsCompose = "4.3.3"
 
 [libraries]
+maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
