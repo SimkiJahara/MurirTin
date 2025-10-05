@@ -107,7 +107,7 @@ class AuthRepository(
             Result.failure(e)
         }
     }
-    
+
 
     suspend fun getUserRole(userId: String): String {
         Log.d("AuthRepository", "Fetching role for userId: $userId")

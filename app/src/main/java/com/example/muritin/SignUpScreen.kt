@@ -20,7 +20,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SignUpScreen(
     navController: NavHostController,
-    onSignUpSuccess: (User) -> Unit
+    onSignUpSuccess: (User) -> Unit,
+    preSelectedRole: String = "Rider" // Added parameter
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -29,7 +30,7 @@ fun SignUpScreen(
     var age by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var role by remember { mutableStateOf("Rider") }
+    var role by remember { mutableStateOf(preSelectedRole) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -66,7 +67,7 @@ fun SignUpScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("নিবন্ধন করুন") },
+                title = { Text(if (preSelectedRole == "Conductor") "কন্ডাক্টর নিবন্ধন" else "নিবন্ধন করুন") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
@@ -99,7 +100,7 @@ fun SignUpScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "আপনার অ্যাকাউন্ট তৈরি করুন",
+                            text = if (preSelectedRole == "Conductor") "কন্ডাক্টর নিবন্ধন করুন" else "আপনার অ্যাকাউন্ট তৈরি করুন",
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
@@ -165,62 +166,75 @@ fun SignUpScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Role selection dropdown
-                        var expanded by remember { mutableStateOf(false) }
-                        ExposedDropdownMenuBox(
-                            expanded = expanded,
-                            onExpandedChange = { expanded = !expanded }
-                        ) {
+                        // Role selection dropdown (disabled for Conductor)
+                        if (preSelectedRole == "Conductor") {
                             OutlinedTextField(
-                                value = when (role) {
-                                    "Rider" -> "রাইডার"
-                                    "Conductor" -> "কন্ডাক্টর"
-                                    "Owner" -> "ওনার"
-                                    else -> "রাইডার"
-                                },
+                                value = "কন্ডাক্টর",
                                 onValueChange = {},
                                 readOnly = true,
                                 label = { Text("ভূমিকা") },
-                                trailingIcon = {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                                },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .menuAnchor()
-                                    .semantics { contentDescription = "ভূমিকা নির্বাচন" }
+                                    .semantics { contentDescription = "ভূমিকা নির্বাচন" },
+                                enabled = false
                             )
-                            ExposedDropdownMenu(
+                        } else {
+                            var expanded by remember { mutableStateOf(false) }
+                            ExposedDropdownMenuBox(
                                 expanded = expanded,
-                                onDismissRequest = { expanded = false }
+                                onExpandedChange = { expanded = !expanded }
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text("রাইডার") },
-                                    onClick = {
-                                        role = "Rider"
-                                        expanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("কন্ডাক্টর") },
-                                    onClick = {
-                                        if (currentUserRole == "Owner") {
-                                            role = "Conductor"
-                                            expanded = false
-                                        } else {
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("শুধুমাত্র ওনাররা কন্ডাক্টর নিবন্ধন করতে পারেন")
-                                            }
-                                        }
+                                OutlinedTextField(
+                                    value = when (role) {
+                                        "Rider" -> "রাইডার"
+                                        "Conductor" -> "কন্ডাক্টর"
+                                        "Owner" -> "ওনার"
+                                        else -> "রাইডার"
                                     },
-                                    enabled = currentUserRole == "Owner"
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("ভূমিকা") },
+                                    trailingIcon = {
+                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .menuAnchor()
+                                        .semantics { contentDescription = "ভূমিকা নির্বাচন" }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("ওনার") },
-                                    onClick = {
-                                        role = "Owner"
-                                        expanded = false
-                                    }
-                                )
+                                ExposedDropdownMenu(
+                                    expanded = expanded,
+                                    onDismissRequest = { expanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("রাইডার") },
+                                        onClick = {
+                                            role = "Rider"
+                                            expanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("কন্ডাক্টর") },
+                                        onClick = {
+                                            if (currentUserRole == "Owner") {
+                                                role = "Conductor"
+                                                expanded = false
+                                            } else {
+                                                scope.launch {
+                                                    snackbarHostState.showSnackbar("শুধুমাত্র ওনাররা কন্ডাক্টর নিবন্ধন করতে পারেন")
+                                                }
+                                            }
+                                        },
+                                        enabled = currentUserRole == "Owner"
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("ওনার") },
+                                        onClick = {
+                                            role = "Owner"
+                                            expanded = false
+                                        }
+                                    )
+                                }
                             }
                         }
 
@@ -250,6 +264,11 @@ fun SignUpScreen(
                                     }
                                 } else if (password.length < 6) {
                                     error = "পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                    }
+                                } else if (preSelectedRole == "Conductor" && currentUserRole != "Owner") {
+                                    error = "শুধুমাত্র ওনাররা কন্ডাক্টর নিবন্ধন করতে পারেন"
                                     scope.launch {
                                         snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
                                     }
