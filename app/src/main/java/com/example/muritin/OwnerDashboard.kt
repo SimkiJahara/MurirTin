@@ -69,12 +69,21 @@ fun OwnerDashboard(navController: NavHostController, user: FirebaseUser, onLogou
             }
             Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = { Toast.makeText(context, "বাস রেজিস্ট্রেশন পর্দা আসবে", Toast.LENGTH_SHORT).show() },
+                onClick = { navController.navigate("register_bus") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics { contentDescription = "বাস রেজিস্টার বোতাম" }
             ) {
                 Text("বাস রেজিস্টার করুন")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { navController.navigate("bus_list") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "বাস তালিকা বোতাম" }
+            ) {
+                Text("আমার বাসসমূহ দেখুন")
             }
             Spacer(modifier = Modifier.height(16.dp))
             Button(

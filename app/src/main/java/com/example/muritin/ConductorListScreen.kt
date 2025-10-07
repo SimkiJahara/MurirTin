@@ -30,7 +30,6 @@ fun ConductorListScreen(navController: NavHostController, user: FirebaseUser) {
     LaunchedEffect(user.uid) {
         try {
             Log.d("ConductorListScreen", "Fetching conductors for ownerId: ${user.uid}, email: ${user.email}")
-            // Verify owner's role
             val ownerRole = AuthRepository().getUserRole(user.uid)
             Log.d("ConductorListScreen", "Owner role: $ownerRole")
             if (ownerRole != "Owner") {
@@ -48,17 +47,12 @@ fun ConductorListScreen(navController: NavHostController, user: FirebaseUser) {
                 .get()
                 .await()
             Log.d("ConductorListScreen", "Snapshot received: ${snapshot.childrenCount} children")
-            val conductorList = mutableListOf<User>()
-            for (child in snapshot.children) {
+            conductors = snapshot.children.mapNotNull { child ->
                 val conductor = child.getValue(User::class.java)
-                if (conductor != null && conductor.role == "Conductor") {
-                    conductorList.add(conductor)
-                    Log.d("ConductorListScreen", "Found conductor: ${conductor.email}, ownerId: ${conductor.ownerId}")
-                }
+                if (conductor?.role == "Conductor") conductor else null
             }
-            conductors = conductorList
             isLoading = false
-            Log.d("ConductorListScreen", "Fetched ${conductorList.size} conductors")
+            Log.d("ConductorListScreen", "Fetched ${conductors.size} conductors")
         } catch (e: Exception) {
             error = "কন্ডাক্টর তালিকা পুনরুদ্ধারে ত্রুটি: ${e.message}"
             isLoading = false

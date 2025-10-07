@@ -1,0 +1,231 @@
+package com.example.muritin
+
+import android.util.Log
+import android.widget.Toast
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var buses by remember { mutableStateOf<List<Bus>>(emptyList()) }
+    var conductors by remember { mutableStateOf<List<User>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var selectedBus by remember { mutableStateOf<Bus?>(null) }
+    var selectedConductorId by remember { mutableStateOf<String?>(null) }
+    var showAssignDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(user.uid) {
+        try {
+            Log.d("BusListScreen", "Fetching buses for ownerId: ${user.uid}, email: ${user.email}")
+            val ownerRole = AuthRepository().getUserRole(user.uid)
+            Log.d("BusListScreen", "Owner role: $ownerRole")
+            if (ownerRole != "Owner") {
+                error = "শুধুমাত্র ওনাররা বাস তালিকা দেখতে পারেন"
+                isLoading = false
+                scope.launch {
+                    snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                }
+                return@LaunchedEffect
+            }
+            val snapshot = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/")
+                .getReference("buses")
+                .orderByChild("ownerId")
+                .equalTo(user.uid)
+                .get()
+                .await()
+            Log.d("BusListScreen", "Snapshot received: ${snapshot.childrenCount} children")
+            buses = snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
+            conductors = AuthRepository().getConductorsForOwner(user.uid)
+            isLoading = false
+            Log.d("BusListScreen", "Fetched ${buses.size} buses")
+        } catch (e: Exception) {
+            error = "বাস তালিকা পুনরুদ্ধারে ত্রুটি: ${e.message}"
+            isLoading = false
+            scope.launch {
+                snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+            }
+            Log.e("BusListScreen", "Error fetching buses: ${e.message}", e)
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("আমার বাসসমূহ") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator()
+            } else if (error != null) {
+                Text(
+                    text = error ?: "অজানা ত্রুটি",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            } else if (buses.isEmpty()) {
+                Text("কোনো বাস পাওয়া যায়নি")
+            } else {
+                LazyColumn {
+                    items(buses) { bus ->
+                        var assignedConductorId by remember(bus.busId) { mutableStateOf<String?>(null) }
+
+                        LaunchedEffect(bus.busId) {
+                            assignedConductorId = AuthRepository().getAssignedConductorForBus(bus.busId)
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("নাম: ${bus.name}")
+                                Text("নম্বর: ${bus.number}")
+                                Text("ফিটনেস সার্টিফিকেট: ${bus.fitnessCertificate}")
+                                Text("ট্যাক্স টোকেন: ${bus.taxToken}")
+                                Text("স্টপস: ${bus.stops.joinToString(", ")}")
+                                Text("অ্যাসাইনড কন্ডাক্টর: ${assignedConductorId ?: "কোনোটি নেই"}")
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Button(
+                                        onClick = {
+                                            selectedBus = bus
+                                            selectedConductorId = assignedConductorId
+                                            showAssignDialog = true
+                                        }
+                                    ) {
+                                        Text("কন্ডাক্টর অ্যাসাইন করুন")
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                val result = AuthRepository().deleteBus(bus.busId)
+                                                if (result.isSuccess) {
+                                                    Toast.makeText(context, "বাস মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
+                                                    buses = AuthRepository().getBusesForOwner(user.uid)
+                                                } else {
+                                                    error = "বাস মুছে ফেলতে ব্যর্থ: ${result.exceptionOrNull()?.message}"
+                                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                    ) {
+                                        Text("মুছুন")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAssignDialog) {
+        AlertDialog(
+            onDismissRequest = { showAssignDialog = false },
+            title = { Text("কন্ডাক্টর অ্যাসাইন করুন") },
+            text = {
+                Column {
+                    var expanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedConductorId?.let { id ->
+                                conductors.find { it.uid == id }?.name ?: id
+                            } ?: "কোনোটি নির্বাচন করুন",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("কন্ডাক্টর নির্বাচন করুন") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("কোনোটি নেই") },
+                                onClick = {
+                                    selectedConductorId = null
+                                    expanded = false
+                                },
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            conductors.forEach { conductor ->
+                                DropdownMenuItem(
+                                    text = { Text(conductor.name ?: conductor.email) },
+                                    onClick = {
+                                        selectedConductorId = conductor.uid
+                                        expanded = false
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            selectedBus?.busId?.let { busId ->
+                                if (selectedConductorId != null) {
+                                    AuthRepository().assignConductorToBus(busId, selectedConductorId!!)
+                                } else {
+                                    AuthRepository().removeConductorFromBus(busId)
+                                }
+                                Toast.makeText(context, "কন্ডাক্টর অ্যাসাইন হয়েছে", Toast.LENGTH_SHORT).show()
+                            }
+                            showAssignDialog = false
+                            buses = AuthRepository().getBusesForOwner(user.uid)
+                        }
+                    }
+                ) {
+                    Text("সংরক্ষণ করুন")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAssignDialog = false }) { Text("বাতিল") }
+            }
+        )
+    }
+}

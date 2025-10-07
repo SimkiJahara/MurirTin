@@ -26,6 +26,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
+
+
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -214,9 +216,26 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+        composable("register_bus") {
+            Log.d("AppNavHost", "Navigating to BusRegistrationScreen")
+            BusRegistrationScreen(navController = navController)
+        }
+        composable("bus_list") {
+            Log.d("AppNavHost", "Navigating to BusListScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                BusListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
     }
 }
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

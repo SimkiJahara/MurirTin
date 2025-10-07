@@ -211,4 +211,123 @@ class AuthRepository(
             Result.failure(e)
         }
     }
+
+    // New functions for bus registration and management
+
+    suspend fun registerBus(
+        ownerId: String,
+        name: String,
+        number: String,
+        fitnessCertificate: String,
+        taxToken: String,
+        stops: List<String>
+    ): Result<Bus> {
+        return try {
+            val busId = database.getReference("buses").push().key ?: return Result.failure(Exception("Failed to generate bus ID"))
+            val bus = Bus(
+                busId = busId,
+                ownerId = ownerId,
+                name = name,
+                number = number,
+                fitnessCertificate = fitnessCertificate,
+                taxToken = taxToken,
+                stops = stops,
+                createdAt = System.currentTimeMillis()
+            )
+            database.getReference("buses").child(busId).setValue(bus).await()
+            Log.d("AuthRepository", "Bus registered: $busId for owner: $ownerId")
+            Result.success(bus)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Bus registration failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getBusesForOwner(ownerId: String): List<Bus> {
+        try {
+            val snapshot = database.getReference("buses")
+                .orderByChild("ownerId")
+                .equalTo(ownerId)
+                .get()
+                .await()
+            val buses = mutableListOf<Bus>()
+            for (child in snapshot.children) {
+                val bus = child.getValue(Bus::class.java)
+                if (bus != null) {
+                    buses.add(bus)
+                }
+            }
+            Log.d("AuthRepository", "Fetched ${buses.size} buses for owner: $ownerId")
+            return buses
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error fetching buses: ${e.message}", e)
+            return emptyList()
+        }
+    }
+
+    suspend fun deleteBus(busId: String): Result<Boolean> {
+        return try {
+            database.getReference("buses").child(busId).removeValue().await()
+            database.getReference("busAssignments").child(busId).removeValue().await() // Remove assignments
+            Log.d("AuthRepository", "Bus deleted: $busId")
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error deleting bus: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun assignConductorToBus(busId: String, conductorId: String): Result<Boolean> {
+        return try {
+            database.getReference("busAssignments").child(busId).setValue(conductorId).await()
+            Log.d("AuthRepository", "Assigned conductor $conductorId to bus $busId")
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error assigning conductor: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun removeConductorFromBus(busId: String): Result<Boolean> {
+        return try {
+            database.getReference("busAssignments").child(busId).removeValue().await()
+            Log.d("AuthRepository", "Removed conductor from bus $busId")
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error removing conductor: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAssignedConductorForBus(busId: String): String? {
+        return try {
+            val snapshot = database.getReference("busAssignments").child(busId).get().await()
+            snapshot.getValue(String::class.java)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error fetching assigned conductor: ${e.message}", e)
+            null
+        }
+    }
+
+    suspend fun getConductorsForOwner(ownerId: String): List<User> {
+        try {
+            val snapshot = database.getReference("users")
+                .orderByChild("ownerId")
+                .equalTo(ownerId)
+                .get()
+                .await()
+            val conductors = mutableListOf<User>()
+            for (child in snapshot.children) {
+                val user = child.getValue(User::class.java)
+                if (user != null && user.role == "Conductor") {
+                    conductors.add(user)
+                }
+            }
+            Log.d("AuthRepository", "Fetched ${conductors.size} conductors for owner: $ownerId")
+            return conductors
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error fetching conductors: ${e.message}", e)
+            return emptyList()
+        }
+    }
 }
