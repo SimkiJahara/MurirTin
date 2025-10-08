@@ -1,3 +1,4 @@
+
 package com.example.muritin
 
 import android.util.Log
@@ -16,6 +17,8 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,6 +27,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
     val scope = rememberCoroutineScope()
     var buses by remember { mutableStateOf<List<Bus>>(emptyList()) }
     var conductors by remember { mutableStateOf<List<User>>(emptyList()) }
+    var schedules by remember { mutableStateOf<Map<String, List<Schedule>>>(emptyMap()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -53,6 +57,9 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
             Log.d("BusListScreen", "Snapshot received: ${snapshot.childrenCount} children")
             buses = snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
             conductors = AuthRepository().getConductorsForOwner(user.uid)
+            schedules = buses.associate { bus ->
+                bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
+            }
             isLoading = false
             Log.d("BusListScreen", "Fetched ${buses.size} buses")
         } catch (e: Exception) {
@@ -81,7 +88,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -96,7 +103,11 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
             } else if (buses.isEmpty()) {
                 Text("কোনো বাস পাওয়া যায়নি")
             } else {
-                LazyColumn {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f) // Ensures LazyColumn takes available space
+                ) {
                     items(buses) { bus ->
                         var assignedConductorId by remember(bus.busId) { mutableStateOf<String?>(null) }
 
@@ -116,7 +127,21 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                 Text("ফিটনেস সার্টিফিকেট: ${bus.fitnessCertificate}")
                                 Text("ট্যাক্স টোকেন: ${bus.taxToken}")
                                 Text("স্টপস: ${bus.stops.joinToString(", ")}")
+                                Text("ভাড়া তালিকা:")
+                                bus.fares.forEach { (stop, dests) ->
+                                    dests.forEach { (dest, fare) ->
+                                        Text("$stop থেকে $dest: $fare টাকা")
+                                    }
+                                }
                                 Text("অ্যাসাইনড কন্ডাক্টর: ${conductors.find { it.uid == assignedConductorId }?.name ?: assignedConductorId ?: "কোনোটি নেই"}")
+                                Text("শিডিউল তালিকা:")
+                                schedules[bus.busId]?.forEach { schedule ->
+                                    Text(
+                                        "তারিখ: ${schedule.date}, শুরুর সময়: ${
+                                            SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(schedule.startTime))
+                                        }"
+                                    )
+                                } ?: Text("কোনো শিডিউল নেই")
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     Button(
                                         onClick = {
@@ -135,6 +160,9 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                                 if (result.isSuccess) {
                                                     Toast.makeText(context, "বাস মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
                                                     buses = AuthRepository().getBusesForOwner(user.uid)
+                                                    schedules = buses.associate { bus ->
+                                                        bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
+                                                    }
                                                 } else {
                                                     error = "বাস মুছে ফেলতে ব্যর্থ: ${result.exceptionOrNull()?.message}"
                                                     scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
@@ -226,6 +254,9 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                     }
                                 }
                                 buses = AuthRepository().getBusesForOwner(user.uid)
+                                schedules = buses.associate { bus ->
+                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
+                                }
                             }
                             showAssignDialog = false
                         }

@@ -1,39 +1,12 @@
+
 package com.example.muritin
 
-import android.annotation.SuppressLint
 import android.util.Log
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.tasks.await
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.InternalSerializationApi
-
-
-@Serializable
-data class User(
-    val uid: String = "",
-    val email: String = "",
-    val name: String? = null,
-    val phone: String? = null,
-    val age: Int? = null,
-    val role: String = "Rider",
-    val createdAt: Long = 0L,
-    val ownerId: String? = null
-)
-
-@Serializable
-data class Bus(
-    val busId: String = "",
-    val ownerId: String = "",
-    val name: String = "",
-    val number: String = "",
-    val fitnessCertificate: String = "",
-    val taxToken: String = "",
-    val stops: List<String> = emptyList(),
-    val createdAt: Long = 0L
-)
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -154,7 +127,8 @@ class AuthRepository {
         number: String,
         fitnessCertificate: String,
         taxToken: String,
-        stops: List<String>
+        stops: List<String>,
+        fares: Map<String, Map<String, Int>>
     ): Result<Bus> {
         return try {
             val busId = database.getReference("buses").push().key ?: throw Exception("Failed to generate busId")
@@ -166,6 +140,7 @@ class AuthRepository {
                 fitnessCertificate = fitnessCertificate,
                 taxToken = taxToken,
                 stops = stops,
+                fares = fares,
                 createdAt = System.currentTimeMillis()
             )
             database.getReference("buses").child(busId).setValue(bus).await()
@@ -191,10 +166,22 @@ class AuthRepository {
         }
     }
 
+    suspend fun getBus(busId: String): Bus? {
+        return try {
+            val snapshot = database.getReference("buses").child(busId).get().await()
+            snapshot.getValue(Bus::class.java)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get bus failed: ${e.message}", e)
+            null
+        }
+    }
+
     suspend fun deleteBus(busId: String): Result<Unit> {
         return try {
             database.getReference("buses").child(busId).removeValue().await()
             database.getReference("busAssignments").child(busId).removeValue().await()
+            database.getReference("schedules").orderByChild("busId").equalTo(busId).get().await()
+                .children.forEach { it.ref.removeValue().await() }
             Log.d("AuthRepository", "Bus deleted: $busId")
             Result.success(Unit)
         } catch (e: Exception) {
@@ -232,7 +219,6 @@ class AuthRepository {
 
     suspend fun assignConductorToBus(busId: String, conductorId: String): Result<Unit> {
         return try {
-            // Check if the conductor is already assigned to another bus
             val snapshot = database.getReference("busAssignments")
                 .orderByChild("conductorId")
                 .equalTo(conductorId)
@@ -242,7 +228,6 @@ class AuthRepository {
                 val existingBusId = snapshot.children.first().key
                 return Result.failure(Exception("কন্ডাক্টর ইতিমধ্যে বাস $existingBusId এ অ্যাসাইন করা হয়েছে"))
             }
-            // Assign conductor to bus
             database.getReference("busAssignments").child(busId).child("conductorId").setValue(conductorId).await()
             Log.d("AuthRepository", "Conductor $conductorId assigned to bus $busId")
             Result.success(Unit)
@@ -260,6 +245,59 @@ class AuthRepository {
         } catch (e: Exception) {
             Log.e("AuthRepository", "Remove conductor failed: ${e.message}", e)
             Result.failure(e)
+        }
+    }
+
+    suspend fun createSchedule(
+        busId: String,
+        conductorId: String,
+        startTime: Long,
+        date: String
+    ): Result<Schedule> {
+        return try {
+            val scheduleId = database.getReference("schedules").push().key ?: throw Exception("Failed to generate scheduleId")
+            val schedule = Schedule(
+                scheduleId = scheduleId,
+                busId = busId,
+                conductorId = conductorId,
+                startTime = startTime,
+                date = date,
+                createdAt = System.currentTimeMillis()
+            )
+            database.getReference("schedules").child(scheduleId).setValue(schedule).await()
+            Log.d("AuthRepository", "Schedule created: $scheduleId for bus: $busId")
+            Result.success(schedule)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Create schedule failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getSchedulesForConductor(conductorId: String): List<Schedule> {
+        return try {
+            val snapshot = database.getReference("schedules")
+                .orderByChild("conductorId")
+                .equalTo(conductorId)
+                .get()
+                .await()
+            snapshot.children.mapNotNull { it.getValue(Schedule::class.java) }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get schedules failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getSchedulesForBus(busId: String): List<Schedule> {
+        return try {
+            val snapshot = database.getReference("schedules")
+                .orderByChild("busId")
+                .equalTo(busId)
+                .get()
+                .await()
+            snapshot.children.mapNotNull { it.getValue(Schedule::class.java) }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get schedules for bus failed: ${e.message}", e)
+            emptyList()
         }
     }
 
