@@ -116,7 +116,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                 Text("ফিটনেস সার্টিফিকেট: ${bus.fitnessCertificate}")
                                 Text("ট্যাক্স টোকেন: ${bus.taxToken}")
                                 Text("স্টপস: ${bus.stops.joinToString(", ")}")
-                                Text("অ্যাসাইনড কন্ডাক্টর: ${assignedConductorId ?: "কোনোটি নেই"}")
+                                Text("অ্যাসাইনড কন্ডাক্টর: ${conductors.find { it.uid == assignedConductorId }?.name ?: assignedConductorId ?: "কোনোটি নেই"}")
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     Button(
                                         onClick = {
@@ -209,14 +209,25 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                         scope.launch {
                             selectedBus?.busId?.let { busId ->
                                 if (selectedConductorId != null) {
-                                    AuthRepository().assignConductorToBus(busId, selectedConductorId!!)
+                                    val result = AuthRepository().assignConductorToBus(busId, selectedConductorId!!)
+                                    if (result.isSuccess) {
+                                        Toast.makeText(context, "কন্ডাক্টর অ্যাসাইন হয়েছে", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        error = result.exceptionOrNull()?.message ?: "কন্ডাক্টর অ্যাসাইন ব্যর্থ"
+                                        scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                    }
                                 } else {
-                                    AuthRepository().removeConductorFromBus(busId)
+                                    val result = AuthRepository().removeConductorFromBus(busId)
+                                    if (result.isSuccess) {
+                                        Toast.makeText(context, "কন্ডাক্টর সরানো হয়েছে", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        error = result.exceptionOrNull()?.message ?: "কন্ডাক্টর সরাতে ব্যর্থ"
+                                        scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                    }
                                 }
-                                Toast.makeText(context, "কন্ডাক্টর অ্যাসাইন হয়েছে", Toast.LENGTH_SHORT).show()
+                                buses = AuthRepository().getBusesForOwner(user.uid)
                             }
                             showAssignDialog = false
-                            buses = AuthRepository().getBusesForOwner(user.uid)
                         }
                     }
                 ) {

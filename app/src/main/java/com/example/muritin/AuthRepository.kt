@@ -1,22 +1,43 @@
 package com.example.muritin
 
+import android.annotation.SuppressLint
 import android.util.Log
-import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.tasks.await
-import com.google.firebase.auth.EmailAuthProvider
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.InternalSerializationApi
 
-class AuthRepository(
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
+
+@Serializable
+data class User(
+    val uid: String = "",
+    val email: String = "",
+    val name: String? = null,
+    val phone: String? = null,
+    val age: Int? = null,
+    val role: String = "Rider",
+    val createdAt: Long = 0L,
+    val ownerId: String? = null
+)
+
+@Serializable
+data class Bus(
+    val busId: String = "",
+    val ownerId: String = "",
+    val name: String = "",
+    val number: String = "",
+    val fitnessCertificate: String = "",
+    val taxToken: String = "",
+    val stops: List<String> = emptyList(),
+    val createdAt: Long = 0L
+)
+
+class AuthRepository {
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val database: FirebaseDatabase = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/")
-) {
-    init {
-        Log.d("AuthRepository", "Initializing AuthRepository")
-        Log.d("AuthRepository", "FirebaseApp: ${FirebaseApp.getInstance().name}")
-        Log.d("AuthRepository", "Database URL: ${database.reference.toString()}")
-    }
 
     suspend fun signup(
         email: String,
@@ -25,78 +46,37 @@ class AuthRepository(
         name: String,
         phone: String,
         age: Int,
-        ownerPassword: String? = null // Owner's password for re-authentication
+        ownerPassword: String? = null
     ): Result<User> {
-        Log.d("AuthRepository", "Attempting signup for email: $email, role: $role, name: $name, phone: $phone, age: $age")
-        if (role !in listOf("Rider", "Conductor", "Owner")) {
-            Log.e("AuthRepository", "Invalid role: $role")
-            return Result.failure(Exception("Invalid role"))
-        }
-
-        // Check if the current user is an Owner when registering a Conductor
-        var ownerId: String? = null
-        var ownerEmail: String? = null
-        if (role == "Conductor") {
-            val currentUser = auth.currentUser
-            if (currentUser != null) {
-                val currentUserRole = getUserRole(currentUser.uid)
-                if (currentUserRole != "Owner") {
-                    Log.e("AuthRepository", "Only Owners can register Conductors")
-                    return Result.failure(Exception("Only Bus Owners can register Conductors"))
-                }
-                if (ownerPassword == null) {
-                    Log.e("AuthRepository", "Owner password required to register Conductor")
-                    return Result.failure(Exception("Owner password required"))
-                }
-                // Re-authenticate the owner
-                try {
-                    val credential = EmailAuthProvider.getCredential(currentUser.email!!, ownerPassword)
-                    currentUser.reauthenticate(credential).await()
-                    ownerId = currentUser.uid
-                    ownerEmail = currentUser.email
-                    Log.d("AuthRepository", "Owner re-authenticated: ${currentUser.email}")
-                } catch (e: Exception) {
-                    Log.e("AuthRepository", "Owner re-authentication failed: ${e.message}", e)
-                    return Result.failure(Exception("Invalid owner credentials"))
-                }
-            } else {
-                Log.e("AuthRepository", "No authenticated user, cannot register Conductor")
-                return Result.failure(Exception("Must be logged in as a Bus Owner to register Conductors"))
-            }
-        }
-
         return try {
-            // Create the new user
+            val currentUser = auth.currentUser
+            var ownerId: String? = null
+            if (role == "Conductor" && ownerPassword != null && currentUser != null) {
+                val email = currentUser.email ?: throw Exception("Owner email is null")
+                val credential = EmailAuthProvider.getCredential(email, ownerPassword)
+                currentUser.reauthenticate(credential).await()
+                ownerId = currentUser.uid
+            }
             val result = auth.createUserWithEmailAndPassword(email, password).await()
-            val userId = result.user?.uid ?: return Result.failure(Exception("No user ID"))
-            Log.d("AuthRepository", "Signup successful, userId: $userId")
-
+            val firebaseUser = result.user ?: throw Exception("User creation failed")
             val user = User(
-                uid = userId,
+                uid = firebaseUser.uid,
                 email = email,
                 name = name,
                 phone = phone,
                 age = age,
                 role = role,
                 createdAt = System.currentTimeMillis(),
-                ownerId = if (role == "Conductor") ownerId else null
+                ownerId = ownerId
             )
-            Log.d("AuthRepository", "Attempting to save user: $user to path: users/$userId")
-            database.getReference("users").child(userId).setValue(user).await()
+            database.getReference("users").child(firebaseUser.uid).setValue(user).await()
             Log.d("AuthRepository", "User data saved to database: $role")
-
-            // If conductor, sign out the new user and sign back in as owner
-            if (role == "Conductor" && ownerId != null && ownerPassword != null && ownerEmail != null) {
-                try {
-                    auth.signOut()
-                    auth.signInWithEmailAndPassword(ownerEmail, ownerPassword).await()
-                    Log.d("AuthRepository", "Signed back in as owner: $ownerEmail")
-                } catch (e: Exception) {
-                    Log.e("AuthRepository", "Failed to sign back in as owner: ${e.message}", e)
-                    return Result.failure(Exception("Failed to restore owner session"))
-                }
+            if (role == "Conductor" && currentUser != null) {
+                val email = currentUser.email ?: throw Exception("Owner email is null")
+                val ownerCredential = EmailAuthProvider.getCredential(email, ownerPassword!!)
+                auth.signInWithCredential(ownerCredential).await()
+                Log.d("AuthRepository", "Signed back in as owner: $email")
             }
-
             Result.success(user)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Signup failed: ${e.message}", e)
@@ -104,23 +84,13 @@ class AuthRepository(
         }
     }
 
+    @OptIn(InternalSerializationApi::class)
     suspend fun login(email: String, password: String): Result<User> {
-        Log.d("AuthRepository", "Attempting login for email: $email")
         return try {
             val result = auth.signInWithEmailAndPassword(email, password).await()
-            val userId = result.user?.uid ?: return Result.failure(Exception("No user ID"))
-            Log.d("AuthRepository", "Login successful, userId: $userId")
-            val snapshot = database.getReference("users").child(userId).get().await()
-            Log.d("AuthRepository", "Snapshot value: ${snapshot.value}")
-            val user = snapshot.getValue(User::class.java)?.copy(
-                uid = userId,
-                email = result.user?.email ?: ""
-            ) ?: User(uid = userId, email = result.user?.email ?: "", role = "Rider")
-            if (user.role !in listOf("Rider", "Conductor", "Owner")) {
-                Log.e("AuthRepository", "Invalid role found: ${user.role}")
-                return Result.failure(Exception("Invalid role"))
-            }
-            Log.d("AuthRepository", "User data fetched: ${user.email}, role: ${user.role}")
+            val firebaseUser = result.user ?: throw Exception("Login failed")
+            val snapshot = database.getReference("users").child(firebaseUser.uid).get().await()
+            val user = snapshot.getValue(User::class.java) ?: throw Exception("User data not found")
             Result.success(user)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Login failed: ${e.message}", e)
@@ -128,91 +98,55 @@ class AuthRepository(
         }
     }
 
-    suspend fun getUser(userId: String): Result<User> {
-        Log.d("AuthRepository", "Fetching user data for userId: $userId")
+    @OptIn(InternalSerializationApi::class)
+    suspend fun getUser(uid: String): Result<User> {
         return try {
-            val snapshot = database.getReference("users").child(userId).get().await()
-            Log.d("AuthRepository", "Snapshot value: ${snapshot.value}")
-            val user = snapshot.getValue(User::class.java)?.copy(
-                uid = userId
-            ) ?: return Result.failure(Exception("User not found"))
-            Log.d("AuthRepository", "User fetched: ${user.email}, role: ${user.role}")
+            val snapshot = database.getReference("users").child(uid).get().await()
+            val user = snapshot.getValue(User::class.java) ?: throw Exception("User not found")
             Result.success(user)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error fetching user: ${e.message}", e)
+            Log.e("AuthRepository", "Get user failed: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    suspend fun getUserRole(userId: String): String {
-        Log.d("AuthRepository", "Fetching role for userId: $userId")
+    suspend fun getUserRole(uid: String): String? {
         return try {
-            val snapshot = database.getReference("users").child(userId).child("role").get().await()
-            Log.d("AuthRepository", "Role snapshot value: ${snapshot.value}")
-            val role = snapshot.getValue(String::class.java) ?: "Rider"
-            if (role !in listOf("Rider", "Conductor", "Owner")) {
-                Log.e("AuthRepository", "Invalid role fetched: $role, defaulting to Rider")
-                return "Rider"
-            }
-            Log.d("AuthRepository", "Role fetched: $role")
-            role
+            val snapshot = database.getReference("users").child(uid).get().await()
+            snapshot.getValue(User::class.java)?.role
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error fetching role: ${e.message}", e)
-            "Rider"
+            Log.e("AuthRepository", "Get user role failed: ${e.message}", e)
+            null
         }
     }
 
-    suspend fun updateUserProfile(userId: String, name: String, phone: String, age: Int, email: String): Result<Boolean> {
-        Log.d("AuthRepository", "Updating user profile for userId: $userId")
+    suspend fun updateUserProfile(uid: String, name: String, phone: String, age: Int, email: String): Result<Unit> {
         return try {
-            val userRef = database.getReference("users").child(userId)
             val updates = mapOf(
                 "name" to name,
                 "phone" to phone,
                 "age" to age,
                 "email" to email
             )
-            userRef.updateChildren(updates).await()
-            Log.d("AuthRepository", "User profile updated")
-            Result.success(true)
+            database.getReference("users").child(uid).updateChildren(updates).await()
+            Log.d("AuthRepository", "User profile updated for $uid")
+            Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error updating user profile: ${e.message}", e)
+            Log.e("AuthRepository", "Update user profile failed: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    suspend fun debugSaveTestData() {
-        try {
-            val testUser = User(
-                uid = "test123",
-                email = "test@example.com",
-                name = "Test User",
-                phone = "+8801712345678",
-                age = 25,
-                role = "Conductor",
-                createdAt = System.currentTimeMillis()
-            )
-            Log.d("AuthRepository", "Attempting to save test user: $testUser to path: users/test123")
-            database.getReference("users").child("test123").setValue(testUser).await()
-            Log.d("AuthRepository", "Test data saved successfully")
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Failed to save test data: ${e.message}", e)
-        }
-    }
-
-    suspend fun deleteUserData(userId: String): Result<Boolean> {
-        Log.d("AuthRepository", "Deleting user data for userId: $userId")
+    suspend fun deleteUserData(uid: String): Result<Unit> {
         return try {
-            database.getReference("users").child(userId).removeValue().await()
-            Log.d("AuthRepository", "User data deleted successfully")
-            Result.success(true)
+            database.getReference("users").child(uid).removeValue().await()
+            Log.d("AuthRepository", "User data deleted for $uid")
+            Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error deleting user data: ${e.message}", e)
+            Log.e("AuthRepository", "Delete user data failed: ${e.message}", e)
             Result.failure(e)
         }
     }
-
-    // New functions for bus registration and management
 
     suspend fun registerBus(
         ownerId: String,
@@ -223,7 +157,7 @@ class AuthRepository(
         stops: List<String>
     ): Result<Bus> {
         return try {
-            val busId = database.getReference("buses").push().key ?: return Result.failure(Exception("Failed to generate bus ID"))
+            val busId = database.getReference("buses").push().key ?: throw Exception("Failed to generate busId")
             val bus = Bus(
                 busId = busId,
                 ownerId = ownerId,
@@ -244,90 +178,107 @@ class AuthRepository(
     }
 
     suspend fun getBusesForOwner(ownerId: String): List<Bus> {
-        try {
+        return try {
             val snapshot = database.getReference("buses")
                 .orderByChild("ownerId")
                 .equalTo(ownerId)
                 .get()
                 .await()
-            val buses = mutableListOf<Bus>()
-            for (child in snapshot.children) {
-                val bus = child.getValue(Bus::class.java)
-                if (bus != null) {
-                    buses.add(bus)
-                }
-            }
-            Log.d("AuthRepository", "Fetched ${buses.size} buses for owner: $ownerId")
-            return buses
+            snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error fetching buses: ${e.message}", e)
-            return emptyList()
+            Log.e("AuthRepository", "Get buses failed: ${e.message}", e)
+            emptyList()
         }
     }
 
-    suspend fun deleteBus(busId: String): Result<Boolean> {
+    suspend fun deleteBus(busId: String): Result<Unit> {
         return try {
             database.getReference("buses").child(busId).removeValue().await()
-            database.getReference("busAssignments").child(busId).removeValue().await() // Remove assignments
-            Log.d("AuthRepository", "Bus deleted: $busId")
-            Result.success(true)
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Error deleting bus: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun assignConductorToBus(busId: String, conductorId: String): Result<Boolean> {
-        return try {
-            database.getReference("busAssignments").child(busId).setValue(conductorId).await()
-            Log.d("AuthRepository", "Assigned conductor $conductorId to bus $busId")
-            Result.success(true)
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Error assigning conductor: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun removeConductorFromBus(busId: String): Result<Boolean> {
-        return try {
             database.getReference("busAssignments").child(busId).removeValue().await()
-            Log.d("AuthRepository", "Removed conductor from bus $busId")
-            Result.success(true)
+            Log.d("AuthRepository", "Bus deleted: $busId")
+            Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error removing conductor: ${e.message}", e)
+            Log.e("AuthRepository", "Delete bus failed: ${e.message}", e)
             Result.failure(e)
-        }
-    }
-
-    suspend fun getAssignedConductorForBus(busId: String): String? {
-        return try {
-            val snapshot = database.getReference("busAssignments").child(busId).get().await()
-            snapshot.getValue(String::class.java)
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Error fetching assigned conductor: ${e.message}", e)
-            null
         }
     }
 
     suspend fun getConductorsForOwner(ownerId: String): List<User> {
-        try {
+        return try {
             val snapshot = database.getReference("users")
                 .orderByChild("ownerId")
                 .equalTo(ownerId)
                 .get()
                 .await()
-            val conductors = mutableListOf<User>()
-            for (child in snapshot.children) {
-                val user = child.getValue(User::class.java)
-                if (user != null && user.role == "Conductor") {
-                    conductors.add(user)
-                }
+            snapshot.children.mapNotNull { child ->
+                val conductor = child.getValue(User::class.java)
+                if (conductor?.role == "Conductor") conductor else null
             }
-            Log.d("AuthRepository", "Fetched ${conductors.size} conductors for owner: $ownerId")
-            return conductors
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error fetching conductors: ${e.message}", e)
-            return emptyList()
+            Log.e("AuthRepository", "Get conductors failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getAssignedConductorForBus(busId: String): String? {
+        return try {
+            val snapshot = database.getReference("busAssignments").child(busId).child("conductorId").get().await()
+            snapshot.getValue(String::class.java)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get assigned conductor failed: ${e.message}", e)
+            null
+        }
+    }
+
+    suspend fun assignConductorToBus(busId: String, conductorId: String): Result<Unit> {
+        return try {
+            // Check if the conductor is already assigned to another bus
+            val snapshot = database.getReference("busAssignments")
+                .orderByChild("conductorId")
+                .equalTo(conductorId)
+                .get()
+                .await()
+            if (snapshot.exists()) {
+                val existingBusId = snapshot.children.first().key
+                return Result.failure(Exception("কন্ডাক্টর ইতিমধ্যে বাস $existingBusId এ অ্যাসাইন করা হয়েছে"))
+            }
+            // Assign conductor to bus
+            database.getReference("busAssignments").child(busId).child("conductorId").setValue(conductorId).await()
+            Log.d("AuthRepository", "Conductor $conductorId assigned to bus $busId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Assign conductor failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun removeConductorFromBus(busId: String): Result<Unit> {
+        return try {
+            database.getReference("busAssignments").child(busId).removeValue().await()
+            Log.d("AuthRepository", "Conductor removed from bus $busId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Remove conductor failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun debugSaveTestData() {
+        try {
+            val testUser = User(
+                uid = "test_conductor_uid",
+                email = "testconductor@example.com",
+                name = "Test Conductor",
+                phone = "+8801712345678",
+                age = 25,
+                role = "Conductor",
+                createdAt = System.currentTimeMillis(),
+                ownerId = "test_owner_uid"
+            )
+            database.getReference("users").child("test_conductor_uid").setValue(testUser).await()
+            Log.d("AuthRepository", "Test data saved")
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Debug save test data failed: ${e.message}", e)
         }
     }
 }
