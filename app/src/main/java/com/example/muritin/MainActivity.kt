@@ -202,6 +202,9 @@ fun AppNavHost(navController: NavHostController) {
         composable("profile_update") {
             Userprofile_Update(navController = navController)
         }
+        composable("show_map") {
+            Show_Map(navController = navController)
+        }
         composable("conductor_list") {
             Log.d("AppNavHost", "Navigating to ConductorListScreen")
             val user = FirebaseAuth.getInstance().currentUser

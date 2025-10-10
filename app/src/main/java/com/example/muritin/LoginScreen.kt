@@ -200,6 +200,17 @@ fun LoginScreen(
                             .semantics { contentDescription = "নিবন্ধন লিঙ্ক" },
                         textAlign = TextAlign.Center
                     )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            navController.navigate("show_map")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Map")
+                    }
                 }
             }
         }

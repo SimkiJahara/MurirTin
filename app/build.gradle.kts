@@ -70,4 +70,9 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.maps.compose)
+
+    // Maps SDK for Android
+    implementation("com.google.android.gms:play-services-location:18.0.0")
+    implementation("com.google.android.gms:play-services-maps:17.0.1")
+    implementation("com.google.maps.android:maps-compose:2.3.0")
 }
