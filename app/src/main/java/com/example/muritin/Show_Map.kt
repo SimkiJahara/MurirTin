@@ -37,10 +37,10 @@ fun Show_Map(navController: NavHostController) {
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    val singapore = LatLng(1.35, 103.87)
-    val currentMarkerState = rememberMarkerState(position = singapore)
+    val initialPosition = LatLng((23.8103, 90.4125)
+    val currentMarkerState = rememberMarkerState(position = initialPosition)
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(singapore, 10f)
+        position = CameraPosition.fromLatLngZoom(initialPosition, 10f)
     }
 
     val mapProperties = MapProperties(
@@ -92,11 +92,11 @@ fun Show_Map(navController: NavHostController) {
     }
     // State to hold the clicked location
     var clickedLatLng by remember { mutableStateOf<LatLng?>(null) }
-    val markerState = rememberMarkerState(position = clickedLatLng ?: singapore)
+    val markerState = rememberMarkerState(position = clickedLatLng ?: initialPosition)
 
     // Update marker state when clickedLatLng changes
     LaunchedEffect(clickedLatLng) {
-        markerState.position = clickedLatLng ?: singapore
+        markerState.position = clickedLatLng ?: initialPosition
     }
 
     // On map click, update the clicked location
