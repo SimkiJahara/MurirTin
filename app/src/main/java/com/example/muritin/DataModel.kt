@@ -28,6 +28,14 @@ data class Bus(
     val createdAt: Long = 0L
 )
 
+
+data class RoutePoint(
+    val point_type: String,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double
+)
+
 @Serializable
 data class Schedule(
     val scheduleId: String = "",

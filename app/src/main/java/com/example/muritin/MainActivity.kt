@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.os.StrictMode
 import android.util.Log
 import android.widget.Toast
+import com.google.android.libraries.places.api.Places
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -48,6 +49,10 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Firebase initialization failed: ${e.message}", e)
         }
+
+        // Initialize Places SDK with API key
+        val apiKey = getString(R.string.map_api_key)
+        Places.initializeWithNewPlacesApiEnabled(applicationContext, apiKey)
 
         setContent {
             MuriTinTheme {
@@ -202,9 +207,9 @@ fun AppNavHost(navController: NavHostController) {
         composable("profile_update") {
             Userprofile_Update(navController = navController)
         }
-        composable("show_map") {
-            Show_Map(navController = navController)
-        }
+//        composable("show_map") {
+//            Show_Map(navController = navController)
+//        }
         composable("conductor_list") {
             Log.d("AppNavHost", "Navigating to ConductorListScreen")
             val user = FirebaseAuth.getInstance().currentUser

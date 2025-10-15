@@ -75,4 +75,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:18.0.0")
     implementation("com.google.android.gms:play-services-maps:17.0.1")
     implementation("com.google.maps.android:maps-compose:2.3.0")
+    implementation("com.google.android.libraries.places:places:3.5.0")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }

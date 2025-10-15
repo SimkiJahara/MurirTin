@@ -17,7 +17,8 @@ lifecycleViewmodelCompose = "2.8.4"
 googleServices = "4.4.2"
 coroutines = "1.7.3"
 mapsCompose = "4.3.3"
-serialization = "1.7.1" # Added for kotlinx-serialization-json
+serialization = "1.7.1"
+firebaseFirestoreKtx = "26.0.2" # Added for kotlinx-serialization-json
 
 [libraries]
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
@@ -46,7 +47,8 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
-kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" } # Added
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+firebase-firestore-ktx = { group = "com.google.firebase", name = "firebase-firestore-ktx", version.ref = "firebaseFirestoreKtx" } # Added
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

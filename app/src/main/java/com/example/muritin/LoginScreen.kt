@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material3.*
@@ -43,6 +45,8 @@ fun LoginScreen(
     var resetLoading by remember { mutableStateOf(false) }
     var resetError by remember { mutableStateOf<String?>(null) }
 
+    val scrollState = rememberScrollState()
+
     fun isValidEmail(email: String): Boolean {
         return Patterns.EMAIL_ADDRESS.matcher(email).matches()
     }
@@ -61,7 +65,7 @@ fun LoginScreen(
     ) { padding ->
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxSize().verticalScroll(scrollState)
                 .padding(padding)
                 .padding(16.dp),
             verticalArrangement = Arrangement.Center,
@@ -200,17 +204,6 @@ fun LoginScreen(
                             .semantics { contentDescription = "নিবন্ধন লিঙ্ক" },
                         textAlign = TextAlign.Center
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Button(
-                        onClick = {
-                            navController.navigate("show_map")
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Map")
-                    }
                 }
             }
         }
