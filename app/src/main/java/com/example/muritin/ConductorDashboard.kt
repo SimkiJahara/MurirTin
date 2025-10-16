@@ -1,8 +1,11 @@
+
 package com.example.muritin
 
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -12,10 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -33,6 +40,11 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
     var selectedDate by remember { mutableStateOf("") }
     var selectedTime by remember { mutableStateOf("") }
 
+    var pendingRequests by remember { mutableStateOf<List<Request>>(emptyList()) }
+    var currentLocation by remember { mutableStateOf<LatLng?>(null) }
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    // Fetch assignment and location
     LaunchedEffect(user.uid) {
         try {
             Log.d("ConductorDashboard", "Fetching assignments for conductorId: ${user.uid}")
@@ -57,6 +69,34 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
             scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
             Log.e("ConductorDashboard", "Error fetching data: ${e.message}", e)
         }
+
+        // Get current location
+        try {
+            val location = fusedLocationClient.lastLocation.await()
+            if (location != null) {
+                currentLocation = LatLng(location.latitude, location.longitude)
+            }
+        } catch (e: Exception) {
+            Log.e("ConductorDashboard", "Location fetch failed: ${e.message}")
+        }
+    }
+
+    // Fetch pending requests
+    LaunchedEffect(currentLocation, assignedBus) {
+        if (currentLocation != null && assignedBus != null) {
+            val retrofit = Retrofit.Builder()
+                .baseUrl("https://maps.googleapis.com/")
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+            val directionsApi = retrofit.create(DirectionsApi::class.java)
+            pendingRequests = AuthRepository().getPendingRequestsForConductor(
+                conductorId = user.uid,
+                currentLocation = currentLocation!!,
+                bus = assignedBus!!,
+                apiKey = context.getString(R.string.map_api_key),
+                directionsApi = directionsApi
+            )
+        }
     }
 
     Scaffold(
@@ -75,7 +115,8 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -146,14 +187,14 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                 Text("শিডিউল তালিকা", style = MaterialTheme.typography.titleMedium)
                 if (schedules.isEmpty()) {
                     Text(
-                        text = "কোনো শিডিউল পাওয়া যায়নি",
+                        text = "কোনো শিডিউল নেই",
                         style = MaterialTheme.typography.bodyLarge
                     )
                 } else {
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f) // Ensures LazyColumn takes available space
+                            .heightIn(max = 200.dp) // Limit height to prevent excessive scrolling
                     ) {
                         items(schedules) { schedule ->
                             Card(
@@ -172,6 +213,50 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
+                Text("পেন্ডিং রিকোয়েস্টসমূহ", style = MaterialTheme.typography.titleMedium)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp) // Limit height to prevent excessive scrolling
+                ) {
+                    items(pendingRequests) { request ->
+                        Card(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("পিকআপ: ${request.pickup}")
+                                Text("গন্তব্য: ${request.destination}")
+                                Text("সিট: ${request.seats}")
+                                Text("ভাড়া: ${request.fare}")
+                                Button(onClick = {
+                                    scope.launch {
+                                        val result = AuthRepository().acceptRequest(request.id, user.uid)
+                                        if (result.isSuccess) {
+                                            Toast.makeText(context, "অ্যাকসেপ্ট সফল", Toast.LENGTH_SHORT).show()
+                                            pendingRequests = pendingRequests.filter { it.id != request.id }
+                                        } else {
+                                            Toast.makeText(context, "অ্যাকসেপ্ট ব্যর্থ", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }) {
+                                    Text("অ্যাকসেপ্ট করুন")
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = {
+                    scope.launch {
+                        if (currentLocation != null) {
+                            AuthRepository().updateConductorLocation(user.uid, currentLocation!!)
+                            Toast.makeText(context, "লোকেশন আপডেট হয়েছে", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "লোকেশন পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) {
+                    Text("লোকেশন আপডেট করুন")
+                }
+                Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(
                     onClick = {
                         Log.d("ConductorDashboard", "Logging out")
@@ -181,6 +266,7 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                 ) {
                     Text("লগআউট")
                 }
+                Spacer(modifier = Modifier.height(16.dp)) // Extra padding at the bottom
             }
         }
     }
@@ -261,3 +347,4 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
         )
     }
 }
+

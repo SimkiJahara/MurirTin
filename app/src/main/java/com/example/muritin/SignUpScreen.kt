@@ -31,7 +31,7 @@ fun SignUpScreen(
     var age by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var ownerPassword by remember { mutableStateOf("") } // Add state for owner password
+    var ownerPassword by remember { mutableStateOf("") }
     var role by remember { mutableStateOf(preSelectedRole) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

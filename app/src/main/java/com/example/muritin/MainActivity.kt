@@ -4,6 +4,8 @@ import android.os.Bundle
 import android.os.StrictMode
 import android.util.Log
 import android.widget.Toast
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import com.google.android.libraries.places.api.Places
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,10 +29,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-
-
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(Dispatchers.IO)
+    lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         StrictMode.setThreadPolicy(
@@ -49,6 +50,8 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Firebase initialization failed: ${e.message}", e)
         }
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         // Initialize Places SDK with API key
         val apiKey = getString(R.string.map_api_key)
@@ -207,9 +210,6 @@ fun AppNavHost(navController: NavHostController) {
         composable("profile_update") {
             Userprofile_Update(navController = navController)
         }
-//        composable("show_map") {
-//            Show_Map(navController = navController)
-//        }
         composable("conductor_list") {
             Log.d("AppNavHost", "Navigating to ConductorListScreen")
             val user = FirebaseAuth.getInstance().currentUser
@@ -233,6 +233,49 @@ fun AppNavHost(navController: NavHostController) {
             val user = FirebaseAuth.getInstance().currentUser
             if (user != null) {
                 BusListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("trip_request") {
+            Log.d("AppNavHost", "Navigating to TripRequestScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                TripRequestScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("my_requests") {
+            Log.d("AppNavHost", "Navigating to MyRequestsScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                MyRequestsScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("live_tracking/{requestId}") { backStackEntry ->
+            val requestId = backStackEntry.arguments?.getString("requestId") ?: ""
+            Log.d("AppNavHost", "Navigating to LiveTrackingScreen for $requestId")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                LiveTrackingScreen(navController = navController, user = user, requestId = requestId)
             } else {
                 LaunchedEffect(Unit) {
                     Log.d("AppNavHost", "No user, navigating to login")
@@ -328,75 +371,3 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogout: () -> Unit) {
-    val context = LocalContext.current
-    Log.d("RiderDashboard", "Rendering RiderDashboard for ${user.email}")
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "রাইডার ড্যাশবোর্ড",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Text("স্বাগতম, ${user.email}")
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Button for past trips (placeholder for Week 5)
-        Button(
-            onClick = {
-                Toast.makeText(context, "পূর্ববর্তী যাত্রা এর তথ্য আসবে", Toast.LENGTH_SHORT).show()
-                // TODO: Implement PastTripsScreen in Week 5
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("পূর্ববর্তী যাত্রাসমূহ")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Button for account info
-        Button(
-            onClick = {
-                navController.navigate("show_account_info")
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("অ্যাকাউন্ট এর তথ্য")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Button for booking tickets
-        Button(
-            onClick = {
-                Toast.makeText(context, "টিকিট বুক করার পর্দা আসবে", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("টিকিট বুক করুন")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = {
-                Log.d("RiderDashboard", "Logging out")
-                Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
-                onLogout()
-            }
-        ) {
-            Text("লগআউট")
-        }
-    }
-}
-
-

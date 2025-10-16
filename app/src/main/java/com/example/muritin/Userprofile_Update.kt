@@ -38,7 +38,6 @@ fun Userprofile_Update(
     val user = FirebaseAuth.getInstance().currentUser
     val uid = user?.uid ?: "No UID"
 
-    // Validation functions
     fun isValidPhone(phone: String): Boolean {
         val cleanedPhone = phone.replace("\\s+".toRegex(), "")
         return cleanedPhone.matches(Regex("^(\\+8801|01)[3-9]\\d{8}$"))
@@ -48,7 +47,6 @@ fun Userprofile_Update(
         return age.toIntOrNull()?.let { it in 18..100 } ?: false
     }
 
-    // Fetch existing user data
     LaunchedEffect(uid) {
         val result = AuthRepository().getUser(uid)
         if (result.isSuccess) {
@@ -59,7 +57,7 @@ fun Userprofile_Update(
             role = userData?.role ?: "Rider"
             isLoading = false
         } else {
-            error = "তথ্য উদ্ধার সম্ভব হয়নি"
+            error = "তথ্য উদ্ধার সম্ভব হয়নি"
             isLoading = false
             scope.launch {
                 snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
@@ -164,12 +162,11 @@ fun Userprofile_Update(
                                     isLoading = true
                                     error = null
                                     scope.launch {
-                                        // Update Realtime Database
                                         val dbResult = AuthRepository().updateUserProfile(
                                             uid, name, phone, age.toIntOrNull() ?: 0, user?.email ?: ""
                                         )
                                         if (dbResult.isSuccess) {
-                                            Toast.makeText(context, "পরিবর্তন সফল হয়েছে", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "পরিবর্তন সফল হয়েছে", Toast.LENGTH_SHORT).show()
                                             navController.navigate("show_account_info")
                                         } else {
                                             error = dbResult.exceptionOrNull()?.message ?: "পরিবর্তন ব্যর্থ"

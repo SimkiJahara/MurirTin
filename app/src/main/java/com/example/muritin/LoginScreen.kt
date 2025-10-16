@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await // Added import
+import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +39,6 @@ fun LoginScreen(
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // State for password reset dialog
     var showResetDialog by remember { mutableStateOf(false) }
     var resetEmail by remember { mutableStateOf("") }
     var resetLoading by remember { mutableStateOf(false) }
@@ -71,7 +70,6 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // App logo and title
             Image(
                 imageVector = Icons.Filled.DirectionsBus,
                 contentDescription = "মুড়ির টিন লোগো",
@@ -209,7 +207,6 @@ fun LoginScreen(
         }
     }
 
-    // Password Reset Dialog
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },

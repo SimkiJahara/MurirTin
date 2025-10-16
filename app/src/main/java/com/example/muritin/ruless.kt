@@ -2,7 +2,8 @@ package com.example.muritin
 
 class ruless {
 /*
-  {
+
+{
   "rules": {
     "users": {
       ".indexOn": ["ownerId"],
@@ -32,22 +33,38 @@ class ruless {
       ".indexOn": ["ownerId"],
       ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'Owner'",
       "$busId": {
-        ".read": "auth != null && data.child('ownerId').val() == auth.uid",
+        ".read": "auth != null && (data.child('ownerId').val() == auth.uid || root.child('busAssignments').child($busId).child('conductorId').val() == auth.uid)",
         ".write": "auth != null && (newData.child('ownerId').val() == auth.uid || (data.child('ownerId').val() == auth.uid && !newData.exists()))",
-        ".validate": "newData.hasChildren(['busId', 'ownerId', 'name', 'number', 'fitnessCertificate', 'taxToken', 'stops', 'createdAt'])"
+        ".validate": "newData.hasChildren(['busId', 'ownerId', 'name', 'number', 'fitnessCertificate', 'taxToken', 'stops', 'fares', 'createdAt'])",
+        "fares": {
+          "$stop": {
+            ".validate": "$stop.matches(/^[A-Za-z0-9 ]+$/) && newData.hasChildren()",
+            "$dest": {
+              ".validate": "$dest.matches(/^[A-Za-z0-9 ]+$/) && newData.isNumber() && newData.val() >= 0"
+            }
+          }
+        }
       }
     },
     "busAssignments": {
       ".indexOn": ["conductorId"],
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'Owner'",
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() == 'Owner' || (query.orderByChild == 'conductorId' && query.equalTo == auth.uid))",
       "$busId": {
-        ".read": "auth != null && root.child('buses').child($busId).child('ownerId').val() == auth.uid",
+        ".read": "auth != null && (root.child('buses').child($busId).child('ownerId').val() == auth.uid || root.child('busAssignments').child($busId).child('conductorId').val() == auth.uid)",
         ".write": "auth != null && root.child('buses').child($busId).child('ownerId').val() == auth.uid",
         ".validate": "newData.hasChild('conductorId') && newData.child('conductorId').isString()"
+      }
+    },
+    "schedules": {
+      ".indexOn": ["busId", "conductorId"],
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() == 'Owner' || (query.orderByChild == 'conductorId' && query.equalTo == auth.uid))",
+      "$scheduleId": {
+        ".read": "auth != null && (root.child('buses').child(data.child('busId').val()).child('ownerId').val() == auth.uid || data.child('conductorId').val() == auth.uid)",
+        ".write": "auth != null && newData.child('conductorId').val() == auth.uid && root.child('busAssignments').child(newData.child('busId').val()).child('conductorId').val() == auth.uid",
+        ".validate": "newData.hasChildren(['busId', 'conductorId', 'startTime', 'date', 'createdAt']) && newData.child('startTime').isNumber() && newData.child('date').isString() && newData.child('createdAt').isNumber()"
       }
     }
   }
 }
-
  */
 }

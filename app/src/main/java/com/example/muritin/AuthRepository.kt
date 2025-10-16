@@ -2,11 +2,20 @@
 package com.example.muritin
 
 import android.util.Log
+import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
-import kotlinx.serialization.InternalSerializationApi
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
+import kotlin.random.Random
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -57,7 +66,6 @@ class AuthRepository {
         }
     }
 
-    @OptIn(InternalSerializationApi::class)
     suspend fun login(email: String, password: String): Result<User> {
         return try {
             val result = auth.signInWithEmailAndPassword(email, password).await()
@@ -71,7 +79,6 @@ class AuthRepository {
         }
     }
 
-    @OptIn(InternalSerializationApi::class)
     suspend fun getUser(uid: String): Result<User> {
         return try {
             val snapshot = database.getReference("users").child(uid).get().await()
@@ -121,6 +128,7 @@ class AuthRepository {
         }
     }
 
+
     suspend fun registerBus(
         ownerId: String,
         name: String,
@@ -143,6 +151,7 @@ class AuthRepository {
                 fares = fares,
                 createdAt = System.currentTimeMillis()
             )
+            Log.d("AuthRepository", "Attempting to register bus: $bus")
             database.getReference("buses").child(busId).setValue(bus).await()
             Log.d("AuthRepository", "Bus registered: $busId for owner: $ownerId")
             Result.success(bus)
@@ -159,7 +168,9 @@ class AuthRepository {
                 .equalTo(ownerId)
                 .get()
                 .await()
-            snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
+            snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Bus::class.java)
+            }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get buses failed: ${e.message}", e)
             emptyList()
@@ -197,7 +208,7 @@ class AuthRepository {
                 .equalTo(ownerId)
                 .get()
                 .await()
-            snapshot.children.mapNotNull { child ->
+            snapshot.children.mapNotNull { child: DataSnapshot ->
                 val conductor = child.getValue(User::class.java)
                 if (conductor?.role == "Conductor") conductor else null
             }
@@ -219,21 +230,34 @@ class AuthRepository {
 
     suspend fun assignConductorToBus(busId: String, conductorId: String): Result<Unit> {
         return try {
-            val snapshot = database.getReference("busAssignments")
-                .orderByChild("conductorId")
-                .equalTo(conductorId)
-                .get()
-                .await()
-            if (snapshot.exists()) {
-                val existingBusId = snapshot.children.first().key
-                return Result.failure(Exception("কন্ডাক্টর ইতিমধ্যে বাস $existingBusId এ অ্যাসাইন করা হয়েছে"))
+            val existingAssignment = suspendCoroutine<DatabaseReference?> { cont ->
+                database.getReference("busAssignments").orderByChild("conductorId").equalTo(conductorId)
+                    .addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            if (snapshot.exists()) {
+                                cont.resume(snapshot.children.first().ref)
+                            } else {
+                                cont.resume(null)
+                            }
+                        }
+                        override fun onCancelled(error: DatabaseError) {
+                            cont.resumeWith(Result.failure(error.toException()))
+                        }
+                    })
             }
-            database.getReference("busAssignments").child(busId).child("conductorId").setValue(conductorId).await()
+
+            existingAssignment?.removeValue()?.await()
+
+            val assignment = BusAssignment(
+                busId = busId,
+                conductorId = conductorId
+            )
+            database.getReference("busAssignments").child(busId).setValue(assignment).await()
             Log.d("AuthRepository", "Conductor $conductorId assigned to bus $busId")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Assign conductor failed: ${e.message}", e)
-            Result.failure(e)
+            Result.failure(Exception("কন্ডাক্টর অ্যাসাইন করতে ব্যর্থ: ${e.message}"))
         }
     }
 
@@ -280,7 +304,9 @@ class AuthRepository {
                 .equalTo(conductorId)
                 .get()
                 .await()
-            snapshot.children.mapNotNull { it.getValue(Schedule::class.java) }
+            snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Schedule::class.java)
+            }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get schedules failed: ${e.message}", e)
             emptyList()
@@ -294,9 +320,179 @@ class AuthRepository {
                 .equalTo(busId)
                 .get()
                 .await()
-            snapshot.children.mapNotNull { it.getValue(Schedule::class.java) }
+            snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Schedule::class.java)
+            }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get schedules for bus failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun submitTripRequest(
+        riderId: String,
+        pickup: String,
+        destination: String,
+        seats: Int,
+        pickupLatLng: LatLng,
+        destinationLatLng: LatLng,
+        apiKey: String,
+        directionsApi: DirectionsApi
+    ): Result<Request> {
+        return try {
+            val origin = "${pickupLatLng.latitude},${pickupLatLng.longitude}"
+            val dest = "${destinationLatLng.latitude},${destinationLatLng.longitude}"
+            val directions = withContext(Dispatchers.IO) {
+                directionsApi.getRoute(origin, dest, null, apiKey)
+            }
+            val fare = if (directions.status == "OK" && directions.routes.isNotEmpty()) {
+                val distance = directions.routes[0].legs[0].distance.value
+                (distance / 1000) * 10
+            } else {
+                100
+            }
+
+            val allBuses = getAllBuses()
+            val matchingBus = allBuses.firstOrNull { bus: Bus ->
+                bus.stops.contains(pickup) && bus.stops.contains(destination) && bus.fares[pickup]?.containsKey(destination) == true
+            }
+            if (matchingBus == null) {
+                return Result.failure(Exception("No matching bus route found"))
+            }
+            val baseFare = matchingBus.fares[pickup]?.get(destination) ?: fare
+            val totalFare = baseFare * seats
+
+            val requestId = database.getReference("requests").push().key ?: throw Exception("Failed to generate requestId")
+            val request = Request(
+                id = requestId,
+                riderId = riderId,
+                busId = matchingBus.busId,
+                pickup = pickup,
+                destination = destination,
+                pickupLatLng = LatLngData(pickupLatLng.latitude, pickupLatLng.longitude),
+                destinationLatLng = LatLngData(destinationLatLng.latitude, destinationLatLng.longitude),
+                seats = seats,
+                fare = totalFare,
+                status = "Pending",
+                createdAt = System.currentTimeMillis()
+            )
+            database.getReference("requests").child(requestId).setValue(request).await()
+            Log.d("AuthRepository", "Trip request submitted: $requestId")
+            Result.success(request)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Submit trip request failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getPendingRequestsForConductor(
+        conductorId: String,
+        currentLocation: LatLng,
+        bus: Bus,
+        apiKey: String,
+        directionsApi: DirectionsApi
+    ): List<Request> {
+        return try {
+            val allRequestsSnapshot = database.getReference("requests")
+                .orderByChild("status")
+                .equalTo("Pending")
+                .get().await()
+            val pendingRequests = allRequestsSnapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Request::class.java)
+            }
+
+            val routeMatching = pendingRequests.filter { req: Request ->
+                bus.stops.contains(req.pickup) && bus.stops.contains(req.destination)
+            }
+
+            val nearbyRequests = routeMatching.filter { req: Request ->
+                val pickupLatLng = LatLng(req.pickupLatLng!!.lat, req.pickupLatLng.lng)
+                val originStr = "${currentLocation.latitude},${currentLocation.longitude}"
+                val destStr = "${pickupLatLng.latitude},${pickupLatLng.longitude}"
+                val response = withContext(Dispatchers.IO) {
+                    directionsApi.getRoute(originStr, destStr, null, apiKey)
+                }
+                if (response.status == "OK" && response.routes.isNotEmpty()) {
+                    val duration = response.routes[0].legs[0].duration.value
+                    (duration / 60) <= 30
+                } else {
+                    false
+                }
+            }
+            nearbyRequests
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get pending requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun acceptRequest(requestId: String, conductorId: String): Result<Unit> {
+        return try {
+            val otp = generateOTP()
+            val updates = mapOf(
+                "status" to "Accepted",
+                "conductorId" to conductorId,
+                "otp" to otp,
+                "acceptedBy" to conductorId
+            )
+            database.getReference("requests").child(requestId).updateChildren(updates).await()
+            Log.d("AuthRepository", "Request accepted with OTP: $otp")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Accept request failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getRequestsForUser(userId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("riderId")
+                .equalTo(userId)
+                .get().await()
+            snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Request::class.java)
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun updateConductorLocation(conductorId: String, location: LatLng): Result<Unit> {
+        return try {
+            val locData = ConductorLocation(
+                conductorId = conductorId,
+                lat = location.latitude,
+                lng = location.longitude,
+                timestamp = System.currentTimeMillis()
+            )
+            database.getReference("conductorLocations").child(conductorId).setValue(locData).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Update location failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getConductorLocation(conductorId: String): ConductorLocation? {
+        return try {
+            val snapshot = database.getReference("conductorLocations").child(conductorId).get().await()
+            snapshot.getValue(ConductorLocation::class.java)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get location failed: ${e.message}", e)
+            null
+        }
+    }
+
+    private suspend fun getAllBuses(): List<Bus> {
+        return try {
+            val snapshot = database.getReference("buses").get().await()
+            snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Bus::class.java)
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get all buses failed: ${e.message}", e)
             emptyList()
         }
     }
@@ -319,4 +515,32 @@ class AuthRepository {
             Log.e("AuthRepository", "Debug save test data failed: ${e.message}", e)
         }
     }
+
+    private fun generateOTP(): String {
+        return Random.nextInt(1000, 9999).toString()
+    }
+
+    suspend fun fixUserRole(uid: String) {
+        try {
+            database.getReference("users").child(uid).child("role").setValue("Owner").await()
+            Log.d("AuthRepository", "User role updated to Owner for UID: $uid")
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Failed to update user role: ${e.message}", e)
+        }
+    }
+    suspend fun ensureOwnerRole(uid: String) {
+        try {
+            val userSnapshot = database.getReference("users").child(uid).get().await()
+            val role = userSnapshot.child("role").getValue(String::class.java) ?: ""
+            Log.d("AuthRepository", "User role for UID $uid: $role")
+            if (role != "Owner") {
+                database.getReference("users").child(uid).child("role").setValue("Owner").await()
+                Log.d("AuthRepository", "User role updated to Owner for UID: $uid")
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Failed to ensure owner role: ${e.message}", e)
+            throw e
+        }
+    }
 }
+

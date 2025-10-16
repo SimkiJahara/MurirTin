@@ -1,6 +1,8 @@
+
 package com.example.muritin
 
 import android.util.Log
+import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,7 +35,6 @@ fun Show_Account_Info(
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // State for password change dialog
     var showPasswordChangeDialog by remember { mutableStateOf(false) }
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
@@ -91,7 +92,7 @@ fun Show_Account_Info(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(8.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -195,203 +196,109 @@ fun Show_Account_Info(
                         try {
                             val currentUser = FirebaseAuth.getInstance().currentUser
                             if (currentUser != null) {
-                                // Delete from Realtime Database
                                 val dbResult = AuthRepository().deleteUserData(currentUser.uid)
                                 if (dbResult.isSuccess) {
-                                    // Delete Firebase Authentication account
                                     currentUser.delete().await()
                                     Toast.makeText(context, "অ্যাকাউন্ট ডিলিট সফল", Toast.LENGTH_SHORT).show()
                                     navController.navigate("login") {
                                         popUpTo(navController.graph.id) { inclusive = true }
                                     }
                                 } else {
-                                    error = "ডাটাবেস থেকে ডিলিট ব্যর্থ: ${dbResult.exceptionOrNull()?.message}"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                                    }
+                                    error = "ডিলিট ব্যর্থ"
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 }
-                            } else {
-                                Toast.makeText(context, "দয়া করে লগইন করুন", Toast.LENGTH_SHORT).show()
-                                navController.navigate("login")
                             }
                         } catch (e: Exception) {
-                            error = "অ্যাকাউন্ট ডিলিট ব্যর্থ: ${e.message}"
-                            scope.launch {
-                                snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
-                            }
+                            error = "ডিলিট ব্যর্থ: ${e.message}"
+                            scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFB71C1C),
-                    contentColor = Color.White
-                )
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text("অ্যাকাউন্ট ডিলিট করুন")
             }
-        }
-    }
 
-    // Password Change Dialog
-    if (showPasswordChangeDialog) {
-        AlertDialog(
-            onDismissRequest = { showPasswordChangeDialog = false },
-            title = { Text("পাসওয়ার্ড পরিবর্তন করুন") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = currentPassword,
-                        onValueChange = { currentPassword = it },
-                        label = { Text("বর্তমান পাসওয়ার্ড") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "বর্তমান পাসওয়ার্ড ক্ষেত্র" },
-                        isError = currentPassword.length < 6 && currentPassword.isNotBlank()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text("নতুন পাসওয়ার্ড") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "নতুন পাসওয়ার্ড ক্ষেত্র" },
-                        isError = newPassword.length < 6 && newPassword.isNotBlank()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = confirmNewPassword,
-                        onValueChange = { confirmNewPassword = it },
-                        label = { Text("নতুন পাসওয়ার্ড নিশ্চিত করুন") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "নতুন পাসওয়ার্ড নিশ্চিতকরণ ক্ষেত্র" },
-                        isError = (confirmNewPassword != newPassword || confirmNewPassword.length < 6) && confirmNewPassword.isNotBlank()
-                    )
-                    if (passwordChangeError != null) {
-                        Text(
-                            text = passwordChangeError ?: "",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (currentPassword.length < 6) {
-                            passwordChangeError = "বর্তমান পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
-                        } else if (newPassword.length < 6) {
-                            passwordChangeError = "নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
-                        } else if (newPassword != confirmNewPassword) {
-                            passwordChangeError = "নতুন পাসওয়ার্ড মিলছে না"
-                        } else {
-                            passwordChangeLoading = true
-                            passwordChangeError = null
-                            scope.launch {
-                                try {
-                                    val currentUser = FirebaseAuth.getInstance().currentUser
-                                    if (currentUser != null && currentUser.email != null) {
-                                        // Re-authenticate the user
-                                        val credential = EmailAuthProvider.getCredential(currentUser.email!!, currentPassword)
-                                        currentUser.reauthenticate(credential).await()
-                                        // Update password
-                                        currentUser.updatePassword(newPassword).await()
-                                        Toast.makeText(context, "পাসওয়ার্ড পরিবর্তন সফল", Toast.LENGTH_SHORT).show()
-                                        showPasswordChangeDialog = false
-                                        // Clear fields
-                                        currentPassword = ""
-                                        newPassword = ""
-                                        confirmNewPassword = ""
-                                    } else {
-                                        passwordChangeError = "ব্যবহারকারী লগইন নেই"
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar(passwordChangeError ?: "অজানা ত্রুটি")
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e("ShowAccountInfo", "Password change failed: ${e.message}", e)
-                                    passwordChangeError = when {
-                                        e.message?.contains("wrong password") == true -> "বর্তমান পাসওয়ার্ড ভুল"
-                                        e.message?.contains("too many requests") == true -> "অনেকগুলো অনুরোধ, পরে চেষ্টা করুন"
-                                        else -> e.message ?: "পাসওয়ার্ড পরিবর্তন ব্যর্থ"
-                                    }
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(passwordChangeError ?: "অজানা ত্রুটি")
-                                    }
-                                } finally {
-                                    passwordChangeLoading = false
-                                }
+            if (showPasswordChangeDialog) {
+                AlertDialog(
+                    onDismissRequest = { showPasswordChangeDialog = false },
+                    title = { Text("পাসওয়ার্ড পরিবর্তন করুন") },
+                    text = {
+                        Column {
+                            OutlinedTextField(
+                                value = currentPassword,
+                                onValueChange = { currentPassword = it },
+                                label = { Text("বর্তমান পাসওয়ার্ড") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = newPassword,
+                                onValueChange = { newPassword = it },
+                                label = { Text("নতুন পাসওয়ার্ড") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = confirmNewPassword,
+                                onValueChange = { confirmNewPassword = it },
+                                label = { Text("নতুন পাসওয়ার্ড নিশ্চিত করুন") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (passwordChangeError != null) {
+                                Text(
+                                    text = passwordChangeError!!,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
                             }
                         }
                     },
-                    enabled = !passwordChangeLoading
-                ) {
-                    if (passwordChangeLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    } else {
-                        Text("পরিবর্তন করুন")
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (newPassword != confirmNewPassword) {
+                                    passwordChangeError = "পাসওয়ার্ড মিলছে না"
+                                    return@Button
+                                }
+                                if (newPassword.length < 6) {
+                                    passwordChangeError = "পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে"
+                                    return@Button
+                                }
+                                passwordChangeLoading = true
+                                scope.launch {
+                                    try {
+                                        val currentUser = FirebaseAuth.getInstance().currentUser
+                                        if (currentUser != null) {
+                                            val credential = EmailAuthProvider.getCredential(currentUser.email!!, currentPassword)
+                                            currentUser.reauthenticate(credential).await()
+                                            currentUser.updatePassword(newPassword).await()
+                                            Toast.makeText(context, "পাসওয়ার্ড পরিবর্তন সফল", Toast.LENGTH_SHORT).show()
+                                            showPasswordChangeDialog = false
+                                        }
+                                    } catch (e: Exception) {
+                                        passwordChangeError = "পাসওয়ার্ড পরিবর্তন ব্যর্থ: ${e.message}"
+                                    } finally {
+                                        passwordChangeLoading = false
+                                    }
+                                }
+                            },
+                            enabled = !passwordChangeLoading
+                        ) {
+                            if (passwordChangeLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            else Text("পরিবর্তন করুন")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPasswordChangeDialog = false }) {
+                            Text("বাতিল")
+                        }
                     }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showPasswordChangeDialog = false
-                    currentPassword = ""
-                    newPassword = ""
-                    confirmNewPassword = ""
-                    passwordChangeError = null
-                }) {
-                    Text("বাতিল")
-                }
+                )
             }
-        )
+        }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

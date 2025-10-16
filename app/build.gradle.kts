@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.example.muritin"
-    compileSdk = 34
+    compileSdk = 35  // Updated to latest
 
     defaultConfig {
         applicationId = "com.example.muritin"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -56,8 +56,8 @@ dependencies {
     implementation(libs.firebase.database.ktx)
     implementation(libs.firebase.messaging.ktx)
     implementation(libs.kotlinx.coroutines.play.services)
-    implementation(libs.play.services.maps)
-    implementation(libs.play.services.location)
+    implementation("com.google.android.gms:play-services-maps:18.2.0")  // Updated
+    implementation("com.google.android.gms:play-services-location:21.3.0")  // Updated
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
@@ -69,14 +69,10 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-    implementation(libs.maps.compose)
+    implementation("com.google.maps.android:maps-compose:6.1.1")  // Updated
 
-    // Maps SDK for Android
-    implementation("com.google.android.gms:play-services-location:18.0.0")
-    implementation("com.google.android.gms:play-services-maps:17.0.1")
-    implementation("com.google.maps.android:maps-compose:2.3.0")
+    // Additional for places and retrofit
     implementation("com.google.android.libraries.places:places:3.5.0")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
 }
