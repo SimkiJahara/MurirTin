@@ -1,4 +1,3 @@
-
 package com.example.muritin
 
 import android.widget.Toast
@@ -16,6 +15,8 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+
+// Modified MyRequestsScreen.kt (add bus and conductor details display)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +61,20 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
                             Text("গন্তব্য: ${request.destination}")
                             Text("ভাড়া: ${request.fare} টাকা")
                             if (request.status == "Accepted") {
-                                Text("কন্ডাক্টর: ${request.conductorId}")
+                                var bus by remember { mutableStateOf<Bus?>(null) }
+                                var conductor by remember { mutableStateOf<User?>(null) }
+                                LaunchedEffect(request.busId, request.conductorId) {
+                                    request.busId?.let { busId ->
+                                        bus = AuthRepository().getBus(busId)
+                                    }
+                                    conductor = AuthRepository().getUser(request.conductorId).getOrNull()
+                                }
+                                bus?.let {
+                                    Text("বাস: ${it.name} (${it.number})")
+                                }
+                                conductor?.let {
+                                    Text("কন্ডাক্টর: ${it.name} (${it.phone})")
+                                }
                                 Text("OTP: ${request.otp ?: "N/A"}")
                                 Button(onClick = { navController.navigate("live_tracking/${request.id}") }) {
                                     Text("লাইভ ট্র্যাকিং")
