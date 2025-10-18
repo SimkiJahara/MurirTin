@@ -35,6 +35,7 @@ fun Show_Account_Info(
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    var showDelAccDialog by remember { mutableStateOf(false) }
     var showPasswordChangeDialog by remember { mutableStateOf(false) }
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
@@ -191,34 +192,60 @@ fun Show_Account_Info(
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
-                onClick = {
-                    scope.launch {
-                        try {
-                            val currentUser = FirebaseAuth.getInstance().currentUser
-                            if (currentUser != null) {
-                                val dbResult = AuthRepository().deleteUserData(currentUser.uid)
-                                if (dbResult.isSuccess) {
-                                    currentUser.delete().await()
-                                    Toast.makeText(context, "অ্যাকাউন্ট ডিলিট সফল", Toast.LENGTH_SHORT).show()
-                                    navController.navigate("login") {
-                                        popUpTo(navController.graph.id) { inclusive = true }
-                                    }
-                                } else {
-                                    error = "ডিলিট ব্যর্থ"
-                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            error = "ডিলিট ব্যর্থ: ${e.message}"
-                            scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
+                onClick = { showDelAccDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color.White,
+                    containerColor = Color.Red
+                )
             ) {
                 Text("অ্যাকাউন্ট ডিলিট করুন")
             }
 
+            if (showDelAccDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDelAccDialog = false },
+                    title = { Text("অ্যাকাউন্ট ডিলিট করুন") },
+                    text = { Text("আপনি কি নিশ্চিতভাবে আপনার অ্যাকাউন্ট ডিলিট করতে চান? এই ক্রিয়াটি পূর্বাবস্থায় ফেরানো যাবে না।") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val currentUser = FirebaseAuth.getInstance().currentUser
+                                        if (currentUser != null) {
+                                            val dbResult = AuthRepository().deleteUserData(currentUser.uid)
+                                            if (dbResult.isSuccess) {
+                                                currentUser.delete().await()
+                                                Toast.makeText(context, "অ্যাকাউন্ট ডিলিট সফল", Toast.LENGTH_SHORT).show()
+                                                navController.navigate("login") {
+                                                    popUpTo(navController.graph.id) { inclusive = true }
+                                                }
+                                            } else {
+                                                error = "ডিলিট ব্যর্থ"
+                                                scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        error = "ডিলিট ব্যর্থ: ${e.message}"
+                                        scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                    }
+                                }
+                                showDelAccDialog = false
+                            }
+                        ) {
+                            Text("হ্যাঁ")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showDelAccDialog = false }
+                        ) {
+                            Text("না")
+                        }
+                    }
+                )
+            }
             if (showPasswordChangeDialog) {
                 AlertDialog(
                     onDismissRequest = { showPasswordChangeDialog = false },

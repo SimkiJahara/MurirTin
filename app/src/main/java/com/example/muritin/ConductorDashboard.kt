@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -141,7 +142,7 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 actions = {
-                    OutlinedButton(onClick = {
+                    Button(onClick = {
                         Log.d("ConductorDashboard", "Logging out")
                         Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
                         onLogout()

@@ -32,6 +32,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedBus by remember { mutableStateOf<Bus?>(null) }
     var selectedConductorId by remember { mutableStateOf<String?>(null) }
+    var showDeleteBusDialog by remember { mutableStateOf(false) }
     var showAssignDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(user.uid) {
@@ -153,24 +154,47 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                     }
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Button(
-                                        onClick = {
-                                            scope.launch {
-                                                val result = AuthRepository().deleteBus(bus.busId)
-                                                if (result.isSuccess) {
-                                                    Toast.makeText(context, "বাস মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
-                                                    buses = AuthRepository().getBusesForOwner(user.uid)
-                                                    schedules = buses.associate { bus ->
-                                                        bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
-                                                    }
-                                                } else {
-                                                    error = "বাস মুছে ফেলতে ব্যর্থ: ${result.exceptionOrNull()?.message}"
-                                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                                                }
-                                            }
-                                        },
+                                        onClick = { showDeleteBusDialog = true },
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                     ) {
                                         Text("মুছুন")
+                                    }
+
+                                    if (showDeleteBusDialog) {
+                                        AlertDialog(
+                                            onDismissRequest = { showDeleteBusDialog = false },
+                                            title = { Text("বাস মুছে ফেলুন") },
+                                            text = { Text("আপনি কি নিশ্চিতভাবে এই বাস মুছে ফেলতে চান? এই ক্রিয়াটি পূর্বাবস্থায় ফেরানো যাবে না।") },
+                                            confirmButton = {
+                                                TextButton(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            val result = AuthRepository().deleteBus(bus.busId)
+                                                            if (result.isSuccess) {
+                                                                Toast.makeText(context, "বাস মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
+                                                                buses = AuthRepository().getBusesForOwner(user.uid)
+                                                                schedules = buses.associate { bus ->
+                                                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
+                                                                }
+                                                            } else {
+                                                                error = "বাস মুছে ফেলতে ব্যর্থ: ${result.exceptionOrNull()?.message}"
+                                                                scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                                            }
+                                                        }
+                                                        showDeleteBusDialog = false
+                                                    }
+                                                ) {
+                                                    Text("হ্যাঁ")
+                                                }
+                                            },
+                                            dismissButton = {
+                                                TextButton(
+                                                    onClick = { showDeleteBusDialog = false }
+                                                ) {
+                                                    Text("না")
+                                                }
+                                            }
+                                        )
                                     }
                                 }
                             }

@@ -153,7 +153,7 @@ fun LoginScreen(
                                         else -> {
                                             error = result.exceptionOrNull()?.message ?: "লগইন ব্যর্থ"
                                             scope.launch {
-                                                snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
+                                                snackbarHostState.showSnackbar("ইমেইল অথবা পাসওয়ার্ড সঠিক নয়")
                                             }
                                         }
                                     }
