@@ -3,16 +3,17 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "com.example.muritin"
-    compileSdk = 34
+    compileSdk = 35  // Updated to latest
 
     defaultConfig {
         applicationId = "com.example.muritin"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -55,11 +56,12 @@ dependencies {
     implementation(libs.firebase.database.ktx)
     implementation(libs.firebase.messaging.ktx)
     implementation(libs.kotlinx.coroutines.play.services)
-    implementation(libs.play.services.maps)
-    implementation(libs.play.services.location)
+    implementation("com.google.android.gms:play-services-maps:18.2.0")  // Updated
+    implementation("com.google.android.gms:play-services-location:21.3.0")  // Updated
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -67,4 +69,10 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    implementation("com.google.maps.android:maps-compose:6.1.1")  // Updated
+
+    // Additional for places and retrofit
+    implementation("com.google.android.libraries.places:places:3.5.0")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
 }

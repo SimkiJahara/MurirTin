@@ -4,11 +4,12 @@ import android.os.Bundle
 import android.os.StrictMode
 import android.util.Log
 import android.widget.Toast
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.libraries.places.api.Places
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(Dispatchers.IO)
+    lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         StrictMode.setThreadPolicy(
@@ -39,7 +41,6 @@ class MainActivity : ComponentActivity() {
                 .build()
         )
         super.onCreate(savedInstanceState)
-
         try {
             FirebaseApp.initializeApp(this)
             Log.d("MainActivity", "Firebase initialized successfully")
@@ -49,6 +50,12 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Firebase initialization failed: ${e.message}", e)
         }
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        // Initialize Places SDK with API key
+        val apiKey = getString(R.string.map_api_key)
+        Places.initializeWithNewPlacesApiEnabled(applicationContext, apiKey)
 
         setContent {
             MuriTinTheme {
@@ -79,16 +86,36 @@ fun AppNavHost(navController: NavHostController) {
             LoginScreen(
                 navController = navController,
                 onLoginSuccess = { user ->
-                    Log.d("AppNavHost", "Login success, navigating to ${user.role} dashboard")
-                    when (user.role) {
-                        "Conductor" -> navController.navigate("conductor_dashboard") {
-                            popUpTo("login") { inclusive = true }
-                        }
-                        else -> navController.navigate("rider_dashboard") {
-                            popUpTo("login") { inclusive = true }
-                        }
+                    Log.d("AppNavHost", "Login success, navigating to user_dashboard")
+                    navController.navigate("user_dashboard") {
+                        popUpTo("login") { inclusive = true }
                     }
                 }
+            )
+        }
+        composable("signup") {
+            Log.d("AppNavHost", "Navigating to SignUpScreen")
+            SignUpScreen(
+                navController = navController,
+                onSignUpSuccess = { user ->
+                    Log.d("AppNavHost", "Signup success, navigating to user_dashboard")
+                    navController.navigate("user_dashboard") {
+                        popUpTo("signup") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("signup_conductor") {
+            Log.d("AppNavHost", "Navigating to SignUpScreen for Conductor")
+            SignUpScreen(
+                navController = navController,
+                onSignUpSuccess = { user ->
+                    Log.d("AppNavHost", "Conductor signup success, navigating to owner_dashboard")
+                    navController.navigate("owner_dashboard") {
+                        popUpTo("signup_conductor") { inclusive = true }
+                    }
+                },
+                preSelectedRole = "Conductor"
             )
         }
         composable("user_dashboard") {
@@ -110,6 +137,7 @@ fun AppNavHost(navController: NavHostController) {
             val user = FirebaseAuth.getInstance().currentUser
             if (user != null) {
                 RiderDashboard(
+                    navController = navController,
                     user = user,
                     onLogout = {
                         Log.d("AppNavHost", "Logout triggered, navigating to login")
@@ -133,6 +161,7 @@ fun AppNavHost(navController: NavHostController) {
             val user = FirebaseAuth.getInstance().currentUser
             if (user != null) {
                 ConductorDashboard(
+                    navController = navController,
                     user = user,
                     onLogout = {
                         Log.d("AppNavHost", "Logout triggered, navigating to login")
@@ -151,27 +180,150 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+        composable("owner_dashboard") {
+            Log.d("AppNavHost", "Navigating to OwnerDashboard")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                OwnerDashboard(
+                    navController = navController,
+                    user = user,
+                    onLogout = {
+                        Log.d("AppNavHost", "Logout triggered, navigating to login")
+                        FirebaseAuth.getInstance().signOut()
+                        navController.navigate("login") {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    }
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("show_account_info") {
+            Show_Account_Info(navController = navController)
+        }
+        composable("profile_update") {
+            Userprofile_Update(navController = navController)
+        }
+        composable("conductor_list") {
+            Log.d("AppNavHost", "Navigating to ConductorListScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("register_bus") {
+            Log.d("AppNavHost", "Navigating to BusRegistrationScreen")
+            BusRegistrationScreen(navController = navController)
+        }
+        composable("bus_list") {
+            Log.d("AppNavHost", "Navigating to BusListScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                BusListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("trip_request") {
+            Log.d("AppNavHost", "Navigating to TripRequestScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                TripRequestScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("my_requests") {
+            Log.d("AppNavHost", "Navigating to MyRequestsScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                MyRequestsScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("live_tracking/{requestId}") { backStackEntry ->
+            val requestId = backStackEntry.arguments?.getString("requestId") ?: ""
+            Log.d("AppNavHost", "Navigating to LiveTrackingScreen for $requestId")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                LiveTrackingScreen(navController = navController, user = user, requestId = requestId)
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
-    var role by remember { mutableStateOf<String?>(null) }
+    var userData by remember { mutableStateOf<User?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     LaunchedEffect(user.uid) {
-        Log.d("UserDashboard", "Starting role fetch for user ${user.uid}, email: ${user.email}")
+        Log.d("UserDashboard", "Fetching user data for ${user.uid}, email: ${user.email}")
         withTimeoutOrNull(3000L) {
             try {
-                role = AuthRepository().getUserRole(user.uid)
-                Log.d("UserDashboard", "Role fetched successfully: $role")
-                when (role) {
+                val result = AuthRepository().getUser(user.uid)
+                userData = result.getOrNull()
+                if (userData == null) {
+                    Log.e("UserDashboard", "No user data found for ${user.uid}")
+                    error = "ব্যবহারকারীর তথ্য পাওয়া যায়নি"
+                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                    return@withTimeoutOrNull
+                }
+                Log.d("UserDashboard", "User data fetched: role=${userData?.role}, name=${userData?.name}, phone=${userData?.phone}, age=${userData?.age}")
+
+                // Navigate directly to appropriate dashboard based on role
+                when (userData?.role) {
                     "Conductor" -> {
                         Log.d("UserDashboard", "Navigating to conductor_dashboard")
                         navController.navigate("conductor_dashboard") {
+                            popUpTo("user_dashboard") { inclusive = true }
+                        }
+                    }
+                    "Owner" -> {
+                        Log.d("UserDashboard", "Navigating to owner_dashboard")
+                        navController.navigate("owner_dashboard") {
                             popUpTo("user_dashboard") { inclusive = true }
                         }
                     }
@@ -183,19 +335,17 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
                     }
                 }
             } catch (e: Exception) {
-                Log.e("UserDashboard", "Error fetching role: ${e.message}", e)
-                error = "রোল পুনরুদ্ধারে ত্রুটি: ${e.message}"
+                Log.e("UserDashboard", "Error fetching user data: ${e.message}", e)
+                error = "তথ্য পুনরুদ্ধারে ত্রুটি: ${e.message}"
                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                Log.d("UserDashboard", "Falling back to rider_dashboard")
                 navController.navigate("rider_dashboard") {
                     popUpTo("user_dashboard") { inclusive = true }
                 }
             }
         } ?: run {
-            Log.w("UserDashboard", "Timeout fetching role for user ${user.uid}")
-            error = "রোল পুনরুদ্ধারে সময় শেষ"
+            Log.w("UserDashboard", "Timeout fetching user data for ${user.uid}")
+            error = "তথ্য পুনরুদ্ধারে সময় শেষ"
             Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-            Log.d("UserDashboard", "Falling back to rider_dashboard due to timeout")
             navController.navigate("rider_dashboard") {
                 popUpTo("user_dashboard") { inclusive = true }
             }
@@ -206,7 +356,7 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        if (role == null && error == null) {
+        if (userData == null && error == null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
                 Spacer(modifier = Modifier.height(16.dp))
@@ -222,95 +372,3 @@ fun UserDashboard(navController: NavHostController, user: FirebaseUser) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RiderDashboard(user: FirebaseUser, onLogout: () -> Unit) {
-    val context = LocalContext.current
-    Log.d("RiderDashboard", "Rendering RiderDashboard for ${user.email}")
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "রাইডার ড্যাশবোর্ড",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Text("স্বাগতম, ${user.email}")
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                Toast.makeText(context, "টিকিট বুক করার পর্দা আসবে", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("টিকিট বুক করুন")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = {
-                Log.d("RiderDashboard", "Logging out")
-                Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
-                onLogout()
-            }
-        ) {
-            Text("লগআউট")
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ConductorDashboard(user: FirebaseUser, onLogout: () -> Unit) {
-    val context = LocalContext.current
-    Log.d("ConductorDashboard", "Rendering ConductorDashboard for ${user.email}")
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "কন্ডাক্টর ড্যাশবোর্ড",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Text("স্বাগতম, ${user.email}")
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                Toast.makeText(context, "শিডিউল আপডেট পর্দা আসবে", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("শিডিউল আপডেট করুন")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = {
-                Log.d("ConductorDashboard", "Logging out")
-                Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
-                onLogout()
-            }
-        ) {
-            Text("লগআউট")
-        }
-    }
-}
-
-@Composable
-fun MuriTinTheme(content: @Composable () -> Unit) {
-    MaterialTheme(content = content)
-}

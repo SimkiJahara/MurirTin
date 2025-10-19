@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">MuriTin</string>
+    <string name="map_api_key">AIzaSyA1fTPlfXEdU7ROdKt_BOmD8643rbD8uLg</string>
+    
 </resources>
