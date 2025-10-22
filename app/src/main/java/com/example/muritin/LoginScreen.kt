@@ -44,8 +44,6 @@ fun LoginScreen(
     var resetLoading by remember { mutableStateOf(false) }
     var resetError by remember { mutableStateOf<String?>(null) }
 
-    val scrollState = rememberScrollState()
-
     fun isValidEmail(email: String): Boolean {
         return Patterns.EMAIL_ADDRESS.matcher(email).matches()
     }
@@ -64,7 +62,7 @@ fun LoginScreen(
     ) { padding ->
         Column(
             modifier = Modifier
-                .fillMaxSize().verticalScroll(scrollState)
+                .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
             verticalArrangement = Arrangement.Center,

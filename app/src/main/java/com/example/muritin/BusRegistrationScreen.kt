@@ -1,10 +1,8 @@
-
 package com.example.muritin
 
-import android.content.Context
+import android.location.Geocoder
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,120 +22,18 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.api.model.RectangularBounds
+import com.google.android.libraries.places.api.model.TypeFilter
+import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.firebase.auth.FirebaseAuth
 import com.google.maps.android.compose.*
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import kotlinx.coroutines.tasks.await
-
-@Composable
-fun SearchLocation(
-    label: String,
-    apiKey: String,
-    placesClient: com.google.android.libraries.places.api.net.PlacesClient,
-    geocodingApi: GeocodingApi,
-    coroutineScope: CoroutineScope,
-    context: Context,
-    onLocationSelected: (String, LatLng) -> Unit,
-    cameraPositionState: CameraPositionState
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isSearching by remember { mutableStateOf(false) }
-
-    OutlinedTextField(
-        value = searchQuery,
-        onValueChange = { newQuery ->
-            searchQuery = newQuery
-            if (newQuery.length > 2) {
-                coroutineScope.launch {
-                    val request = com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
-                        .builder()
-                        .setQuery(newQuery)
-                        .setCountries("BD")
-                        .build()
-                    placesClient.findAutocompletePredictions(request)
-                        .addOnSuccessListener { response ->
-                            suggestions = response.autocompletePredictions.map { prediction ->
-                                prediction.getFullText(null).toString()
-                            }
-                        }
-                        .addOnFailureListener { suggestions = emptyList() }
-                }
-            } else {
-                suggestions = emptyList()
-            }
-        },
-        label = { Text(text = label) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Color(0xFF6650A4)
-        ),
-        trailingIcon = {
-            if (isSearching) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp))
-            }
-        }
-    )
-
-    if (suggestions.isNotEmpty()) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 150.dp)
-                .padding(horizontal = 8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            LazyColumn {
-                items(suggestions) { suggestion: String ->
-                    ListItem(
-                        headlineContent = { Text(text = suggestion, style = MaterialTheme.typography.bodyMedium) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                coroutineScope.launch {
-                                    isSearching = true
-                                    try {
-                                        val response = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            geocodingApi.getLatLng(suggestion, apiKey)
-                                        }
-                                        if (response.status == "OK" && response.results.isNotEmpty()) {
-                                            val latLng = LatLng(
-                                                response.results[0].geometry.location.lat,
-                                                response.results[0].geometry.location.lng
-                                            )
-                                            onLocationSelected(suggestion, latLng)
-                                            cameraPositionState.position = CameraPosition.fromLatLngZoom(
-                                                latLng,
-                                                cameraPositionState.position.zoom
-                                            )
-                                            searchQuery = suggestion
-                                            suggestions = emptyList()
-                                        } else {
-                                            Toast.makeText(context, "লোকেশন পাওয়া যায়নি", Toast.LENGTH_LONG).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                    } finally {
-                                        isSearching = false
-                                    }
-                                }
-                            }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                    Divider(color = Color.LightGray)
-                }
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,6 +69,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
     var originAddress by remember { mutableStateOf("") }
     var originLatLng by remember { mutableStateOf<LatLng?>(null) }
     var destinationAddress by remember { mutableStateOf("") }
+    var stopLatLng by remember { mutableStateOf<LatLng?>(null) }
+    var stopAddress by remember { mutableStateOf("") }
     var destinationLatLng by remember { mutableStateOf<LatLng?>(null) }
     val stops = remember { mutableStateListOf<Pair<String, LatLng>>() }
     val polylinePoints = remember { mutableStateOf<List<LatLng>>(emptyList()) }
@@ -181,9 +79,13 @@ fun BusRegistrationScreen(navController: NavHostController) {
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(initialPosition, 10f)
     }
+    var screenForOrigin by remember { mutableStateOf(true) }
+    var screenForDest by remember { mutableStateOf(false) }
+    var screenForStops by remember { mutableStateOf(false) }
     val mapProperties = MapProperties(isTrafficEnabled = true)
     val uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false)
     val scrollState = rememberScrollState()
+
 
     Scaffold(
         topBar = {
@@ -260,125 +162,361 @@ fun BusRegistrationScreen(navController: NavHostController) {
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    SearchLocation(
-                        label = "যাত্রা শুরুর অবস্থান",
-                        apiKey = apiKey,
-                        placesClient = placesClient,
-                        geocodingApi = geocodingApi,
-                        coroutineScope = coroutineScope,
-                        context = context,
-                        onLocationSelected = { addr, latlng ->
-                            originAddress = addr
-                            originLatLng = latlng
-                        },
-                        cameraPositionState = cameraPositionState
-                    )
-                    SearchLocation(
-                        label = "গন্তব্যস্থল",
-                        apiKey = apiKey,
-                        placesClient = placesClient,
-                        geocodingApi = geocodingApi,
-                        coroutineScope = coroutineScope,
-                        context = context,
-                        onLocationSelected = { addr, latlng ->
-                            destinationAddress = addr
-                            destinationLatLng = latlng
-                        },
-                        cameraPositionState = cameraPositionState
-                    )
-                    SearchLocation(
-                        label = "স্টপেজ (একাধিক হলে একটার পর একটা মুছে লিখুন)",
-                        apiKey = apiKey,
-                        placesClient = placesClient,
-                        geocodingApi = geocodingApi,
-                        coroutineScope = coroutineScope,
-                        context = context,
-                        onLocationSelected = { addr, latlng ->
-                            stops.add(Pair(addr, latlng))
-                        },
-                        cameraPositionState = cameraPositionState
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp, vertical = 4.dp)
-                    ) {
+                    //Section for selecting origin location
+                    if(screenForOrigin) {
+                        SearchLocation(
+                            label = "যাত্রা শুরুর অবস্থান লিখে খুজুন বা ম্যাপে মার্ক করুন",
+                            apiKey = apiKey,
+                            placesClient = placesClient,
+                            geocodingApi = geocodingApi,
+                            coroutineScope = coroutineScope,
+                            context = context,
+                            onLocationSelected = { addr, latlng ->
+                                originAddress = addr
+                                originLatLng = latlng
+                            },
+                            cameraPositionState = cameraPositionState
+                        )
+                        // On map click, update the clicked location
+                        val onMapClick: (LatLng) -> Unit = { latLng ->
+                            originLatLng = latLng
+                            val latLngStr = String.format("%.4f,%.4f", latLng.latitude, latLng.longitude)
+                            cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                            coroutineScope.launch {
+                                try {
+                                    // Use Geocoder to get address
+                                    val geocoder = Geocoder(context)
+                                    val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
+                                    originAddress = if (addresses != null && addresses.isNotEmpty()) {
+                                        addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or fallback to coordinates
+                                    } else {
+                                        "লোকেশন পাওয়া যায়নি: $latLngStr"
+                                    }
+                                } catch (e: Exception) {
+                                    originAddress = "লোকেশন পাওয়া যায়নি: ${e.message}"
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        GoogleMap(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp),
+                            cameraPositionState = cameraPositionState,
+                            properties = mapProperties,
+                            uiSettings = uiSettings,
+                            onMapClick = onMapClick
+                        ) {
+                            if (originLatLng != null) {
+                                Marker(
+                                    state = MarkerState(position = originLatLng!!),
+                                    title = "শুরু",
+                                    snippet = originAddress,
+                                    icon = BitmapDescriptorFactory.defaultMarker(
+                                        BitmapDescriptorFactory.HUE_VIOLET
+                                    )
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = {
-                                if (originLatLng != null && destinationLatLng != null) {
-                                    coroutineScope.launch {
-                                        val originStr = "${originLatLng!!.latitude},${originLatLng!!.longitude}"
-                                        val destStr = "${destinationLatLng!!.latitude},${destinationLatLng!!.longitude}"
-                                        val waypoints = if (stops.isNotEmpty()) {
-                                            stops.joinToString("|") { "${it.second.latitude},${it.second.longitude}" }
-                                        } else {
-                                            null
-                                        }
-                                        try {
-                                            val response = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                                directionsApi.getRoute(
-                                                    origin = originStr,
-                                                    destination = destStr,
-                                                    waypoints = waypoints,
-                                                    apiKey = apiKey
-                                                )
-                                            }
-                                            if (response.status == "OK" && response.routes.isNotEmpty()) {
-                                                returned_points_from_directionapi = response.routes[0].overview_polyline.points
-                                                val decoded = decodePolyline(returned_points_from_directionapi)
-                                                polylinePoints.value = decoded
-                                                if (decoded.isNotEmpty()) {
-                                                    val boundsBuilder = LatLngBounds.Builder()
-                                                    decoded.forEach { point -> boundsBuilder.include(point) }
-                                                    val bounds = boundsBuilder.build()
-                                                    cameraPositionState.animate(
-                                                        CameraUpdateFactory.newLatLngBounds(bounds, 100)
-                                                    )
-                                                }
-                                            } else {
-                                                Toast.makeText(context, "রুট পাওয়া যায়নি", Toast.LENGTH_LONG).show()
-                                            }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
+                                if (originAddress.isBlank() || originLatLng == null) {
+                                    error = "যাত্রা শুরুর অবস্থান নির্বাচন করুন"
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else {
-                                    Toast.makeText(context, "শুরুর এবং গন্তব্য স্থল যোগ করুন", Toast.LENGTH_SHORT).show()
+                                    screenForOrigin = false
+                                    screenForDest = true
                                 }
                             },
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading
                         ) {
-                            Text("রুট যোগ করুন")
+                            if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            else Text("গন্তব্য নির্বাচন করুন")
                         }
+                    }
+                    //Section for selecting destination
+                    if(screenForDest) {
+                        SearchLocation(
+                            label = "গন্তব্যস্থল লিখে খুজুন বা ম্যাপে মার্ক করুন",
+                            apiKey = apiKey,
+                            placesClient = placesClient,
+                            geocodingApi = geocodingApi,
+                            coroutineScope = coroutineScope,
+                            context = context,
+                            onLocationSelected = { addr, latlng ->
+                                destinationAddress = addr
+                                destinationLatLng = latlng
+                            },
+                            cameraPositionState = cameraPositionState
+                        )
+                        // On map click, update the clicked location
+                        val onMapClick: (LatLng) -> Unit = { latLng ->
+                            destinationLatLng = latLng
+                            val latLngStr = String.format("%.4f,%.4f", latLng.latitude, latLng.longitude)
+                            cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                            coroutineScope.launch {
+                                try {
+                                    // Use Geocoder to get address
+                                    val geocoder = Geocoder(context)
+                                    val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
+                                    destinationAddress = if (addresses != null && addresses.isNotEmpty()) {
+                                        addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or fallback to coordinates
+                                    } else {
+                                        "লোকেশন পাওয়া যায়নি: $latLngStr"
+                                    }
+                                } catch (e: Exception) {
+                                    destinationAddress = "লোকেশন পাওয়া যায়নি: ${e.message}"
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        GoogleMap(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp),
+                            cameraPositionState = cameraPositionState,
+                            properties = mapProperties,
+                            uiSettings = uiSettings,
+                            onMapClick = onMapClick
+                        ) {
+                            Marker(
+                                state = MarkerState(position = originLatLng!!),
+                                title = "শুরু",
+                                snippet = originAddress,
+                                icon = BitmapDescriptorFactory.defaultMarker(
+                                    BitmapDescriptorFactory.HUE_VIOLET
+                                )
+                            )
+                            if (destinationLatLng != null) {
+                                Marker(
+                                    state = MarkerState(position = destinationLatLng!!),
+                                    title = "গন্তব্য",
+                                    snippet = destinationAddress,
+                                    icon = BitmapDescriptorFactory.defaultMarker(
+                                        BitmapDescriptorFactory.HUE_VIOLET
+                                    )
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = {
-                                originAddress = ""
-                                originLatLng = null
-                                destinationAddress = ""
-                                destinationLatLng = null
-                                stops.clear()
-                                polylinePoints.value = emptyList()
-                                coroutineScope.launch {
-                                    cameraPositionState.animate(
-                                        CameraUpdateFactory.newCameraPosition(
-                                            CameraPosition.fromLatLngZoom(initialPosition, 10f)
+                                if (destinationAddress.isBlank() || destinationLatLng == null) {
+                                    error = "গন্তব্য নির্বাচন করুন"
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                } else {
+                                    screenForOrigin = false
+                                    screenForDest = false
+                                    screenForStops = true
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading
+                        ) {
+                            if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            else Text("স্টপেজ নির্বাচন করুন")
+                        }
+                    }
+                    //Section for selecting stops
+                    if(screenForStops) {
+                        SearchLocation(
+                            label = "স্টপেজ লিখে খুজুন বা ম্যাপে মার্ক করুন",
+                            apiKey = apiKey,
+                            placesClient = placesClient,
+                            geocodingApi = geocodingApi,
+                            coroutineScope = coroutineScope,
+                            context = context,
+                            onLocationSelected = { addr, latlng ->
+                                stopAddress = addr         //stops.add(Pair(addr, latlng))
+                                stopLatLng = latlng
+                            },
+                            cameraPositionState = cameraPositionState
+                        )
+                        // On map click, update the clicked location
+                        val onMapClick: (LatLng) -> Unit = { latLng ->
+                            stopLatLng = latLng
+                            val latLngStr = String.format("%.4f,%.4f", latLng.latitude, latLng.longitude)
+                            cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                            coroutineScope.launch {
+                                try {
+                                    // Use Geocoder to get address
+                                    val geocoder = Geocoder(context)
+                                    val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
+                                    stopAddress = if (addresses != null && addresses.isNotEmpty()) {
+                                        addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or fallback to coordinates
+                                    } else {
+                                        "লোকেশন পাওয়া যায়নি: $latLngStr"
+                                    }
+                                } catch (e: Exception) {
+                                    stopAddress = "লোকেশন পাওয়া যায়নি: ${e.message}"
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        GoogleMap(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp),
+                            cameraPositionState = cameraPositionState,
+                            properties = mapProperties,
+                            uiSettings = uiSettings,
+                            onMapClick = onMapClick
+                        ) {
+                            Marker(
+                                state = MarkerState(position = originLatLng!!),
+                                title = "শুরু",
+                                snippet = originAddress,
+                                icon = BitmapDescriptorFactory.defaultMarker(
+                                    BitmapDescriptorFactory.HUE_VIOLET
+                                )
+                            )
+                            Marker(
+                                state = MarkerState(position = destinationLatLng!!),
+                                title = "গন্তব্য",
+                                snippet = destinationAddress,
+                                icon = BitmapDescriptorFactory.defaultMarker(
+                                    BitmapDescriptorFactory.HUE_VIOLET
+                                )
+                            )
+                            //Current stop marker
+                            if(stopLatLng != null) {
+                                Marker(
+                                    state = MarkerState(position = stopLatLng!!),
+                                    title = "গন্তব্য",
+                                    snippet = destinationAddress,
+                                    icon = BitmapDescriptorFactory.defaultMarker(
+                                        BitmapDescriptorFactory.HUE_RED
+                                    )
+                                )
+                            }
+                            //Previous stop markers
+                            if(stops != null) {
+                                stops.forEachIndexed { index, stop ->
+                                    Marker(
+                                        state = MarkerState(position = stop.second),
+                                        title = "স্টপ ${index + 1}",
+                                        icon = BitmapDescriptorFactory.defaultMarker(
+                                            BitmapDescriptorFactory.HUE_RED
                                         )
                                     )
                                 }
-                            },
+                            }
+                            if (polylinePoints.value.isNotEmpty()) {
+                                Polyline(
+                                    points = polylinePoints.value,
+                                    color = Color.Blue,
+                                    width = 10f
+                                )
+                            }
+                        }
+                        if(stopLatLng != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    stops.add(Pair(stopAddress, stopLatLng) as Pair<String, LatLng>)
+                                    stopAddress = ""
+                                    stopLatLng = null
+                                    screenForDest = false
+                                    screenForStops = false
+                                    screenForOrigin = false
+                                    screenForStops = true //Show the screen again
+                                },
+                                modifier = Modifier
+                                    //.weight(1f)
+                                    .padding(start = 4.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("আরও একটি স্টপেজ যোগ করুন")
+                            }
+                        }
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFB71C1C),
-                                contentColor = Color.White
-                            )
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 4.dp)
                         ) {
-                            Text("রুট বাতিল করুন")
+                            Button(
+                                onClick = {
+                                    if (originLatLng != null && destinationLatLng != null) {
+                                        coroutineScope.launch {
+                                            val originStr = "${originLatLng!!.latitude},${originLatLng!!.longitude}"
+                                            val destStr = "${destinationLatLng!!.latitude},${destinationLatLng!!.longitude}"
+                                            val waypoints = if (stops.isNotEmpty() && stopLatLng != null) {  //for mulitple stops, the last stop needs to be added
+                                                stops.add(Pair(stopAddress, stopLatLng) as Pair<String, LatLng>)
+                                                stops.joinToString("|") { "${it.second.latitude},${it.second.longitude}" }
+                                            } else if (stopLatLng != null){   //when only selecting one stop
+                                                "${stopLatLng!!.latitude},${stopLatLng!!.longitude}"
+                                            } else { null }
+                                            try {
+                                                val response = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                    directionsApi.getRoute(
+                                                        origin = originStr,
+                                                        destination = destStr,
+                                                        waypoints = waypoints,
+                                                        apiKey = apiKey
+                                                    )
+                                                }
+                                                if (response.status == "OK" && response.routes.isNotEmpty()) {
+                                                    returned_points_from_directionapi = response.routes[0].overview_polyline.points
+                                                    val decoded = decodePolyline(returned_points_from_directionapi)
+                                                    polylinePoints.value = decoded
+                                                    if (decoded.isNotEmpty()) {
+                                                        val boundsBuilder = LatLngBounds.Builder()
+                                                        decoded.forEach { point -> boundsBuilder.include(point) }
+                                                        val bounds = boundsBuilder.build()
+                                                        cameraPositionState.animate(
+                                                            CameraUpdateFactory.newLatLngBounds(bounds, 100)
+                                                        )
+                                                    }
+                                                } else {
+                                                    Toast.makeText(context, "রুট পাওয়া যায়নি", Toast.LENGTH_LONG).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "শুরুর এবং গন্তব্য স্থল যোগ করুন", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 4.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("রুট যোগ করুন")
+                            }
+                            Button(
+                                onClick = {
+                                    originAddress = ""
+                                    originLatLng = null
+                                    destinationAddress = ""
+                                    destinationLatLng = null
+                                    stops.clear()
+                                    polylinePoints.value = emptyList()
+                                    coroutineScope.launch {
+                                        cameraPositionState.animate(
+                                            CameraUpdateFactory.newCameraPosition(
+                                                CameraPosition.fromLatLngZoom(initialPosition, 10f)
+                                            )
+                                        )
+                                    }
+                                    screenForDest = false
+                                    screenForStops = false
+                                    screenForOrigin = true
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFB71C1C),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Text("রুট বাতিল করুন")
+                            }
                         }
                     }
                     Card(
@@ -400,43 +538,6 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             if (destinationAddress.isNotEmpty()) {
                                 Text(text = "গন্তব্য: $destinationAddress", style = MaterialTheme.typography.bodySmall)
                             }
-                        }
-                    }
-                    GoogleMap(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(400.dp),
-                        cameraPositionState = cameraPositionState,
-                        properties = mapProperties,
-                        uiSettings = uiSettings
-                    ) {
-                        if (originLatLng != null) {
-                            Marker(
-                                state = MarkerState(position = originLatLng!!),
-                                title = "শুরু",
-                                icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_VIOLET)
-                            )
-                        }
-                        if (destinationLatLng != null) {
-                            Marker(
-                                state = MarkerState(position = destinationLatLng!!),
-                                title = "গন্তব্য",
-                                icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_VIOLET)
-                            )
-                        }
-                        stops.forEachIndexed { index, stop ->
-                            Marker(
-                                state = MarkerState(position = stop.second),
-                                title = "স্টপ ${index + 1}",
-                                icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
-                            )
-                        }
-                        if (polylinePoints.value.isNotEmpty()) {
-                            Polyline(
-                                points = polylinePoints.value,
-                                color = Color.Blue,
-                                width = 10f
-                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))

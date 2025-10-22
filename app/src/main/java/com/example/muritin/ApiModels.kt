@@ -1,4 +1,3 @@
-
 package com.example.muritin
 
 import retrofit2.http.GET
@@ -8,6 +7,11 @@ interface GeocodingApi {
     @GET("maps/api/geocode/json")
     suspend fun getLatLng(
         @Query("address") address: String,
+        @Query("key") apiKey: String
+    ): GeocodeResponse
+    @GET("maps/api/geocode/json")
+    suspend fun getAddressFromLatLng(
+        @Query("latlng") latLng: String,
         @Query("key") apiKey: String
     ): GeocodeResponse
 }
@@ -28,7 +32,9 @@ data class GeocodeResponse(
 )
 
 data class GeocodeResult(
-    val geometry: Geometry
+    val formattedAddress: String,
+    val geometry: Geometry,
+    val types: List<String>
 )
 
 data class Geometry(

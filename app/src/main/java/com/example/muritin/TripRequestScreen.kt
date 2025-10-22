@@ -192,4 +192,3 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
         }
     }
 }
-
