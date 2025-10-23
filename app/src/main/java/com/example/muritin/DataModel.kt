@@ -42,10 +42,10 @@ data class Schedule(
     val busId: String = "",
     val conductorId: String = "",
     val startTime: Long = 0L,
+    val endTime: Long = 0L,  // NEW: Add this field
     val date: String = "",
     val createdAt: Long = 0L
 )
-
 @Serializable
 data class Request(
     val id: String = "",

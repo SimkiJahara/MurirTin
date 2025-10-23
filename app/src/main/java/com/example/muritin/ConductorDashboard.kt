@@ -47,6 +47,7 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
     var showScheduleDialog by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf("") }
     var selectedTime by remember { mutableStateOf("") }
+    var selectedEndTime by remember { mutableStateOf("") } // NEW: End time input
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
     val apiKey = context.getString(R.string.map_api_key)
@@ -88,7 +89,7 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
     // Fetch data
     LaunchedEffect(user.uid) {
         try {
-            // Fetch bus assignment and schedules regardless of location
+            // Fetch bus assignment and schedules
             val snapshot = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/")
                 .getReference("busAssignments")
                 .orderByChild("conductorId")
@@ -98,7 +99,10 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
             val busId = snapshot.children.firstOrNull()?.key
             if (busId != null) {
                 assignedBus = AuthRepository().getBus(busId)
-                schedules = AuthRepository().getSchedulesForConductor(user.uid)
+                // CHANGED: Use getSchedulesForBus to get schedules for current bus only
+                schedules = AuthRepository().getSchedulesForBus(busId)
+                // NEW: Filter schedules to hide those past endTime
+                schedules = schedules.filter { it.endTime >= System.currentTimeMillis() }
                 acceptedRequests = AuthRepository().getAcceptedRequestsForConductor(user.uid)
             } else {
                 error = "কোনো বাস অ্যাসাইন করা হয়নি"
@@ -173,7 +177,6 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                // Allow manual permission request
                 Button(
                     onClick = { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
                     modifier = Modifier.fillMaxWidth()
@@ -287,6 +290,10 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                                     )
                                     Text(
                                         text = "শুরুর সময়: ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(schedule.startTime))}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = "শেষের সময়: ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(schedule.endTime))}",
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }
@@ -468,6 +475,14 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                         modifier = Modifier.fillMaxWidth(),
                         isError = selectedTime.isNotBlank() && !selectedTime.matches(Regex("\\d{2}:\\d{2}"))
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = selectedEndTime,
+                        onValueChange = { selectedEndTime = it },
+                        label = { Text("শেষের সময় (HH:MM, 24-ঘন্টা ফরম্যাট)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = selectedEndTime.isNotBlank() && !selectedEndTime.matches(Regex("\\d{2}:\\d{2}"))
+                    )
                 }
             },
             confirmButton = {
@@ -476,7 +491,9 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                         if (!selectedDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
                             scope.launch { snackbarHostState.showSnackbar("বৈধ তারিখ প্রয়োজন (YYYY-MM-DD)") }
                         } else if (!selectedTime.matches(Regex("\\d{2}:\\d{2}"))) {
-                            scope.launch { snackbarHostState.showSnackbar("বৈধ সময় প্রয়োজন (HH:MM)") }
+                            scope.launch { snackbarHostState.showSnackbar("বৈধ শুরুর সময় প্রয়োজন (HH:MM)") }
+                        } else if (!selectedEndTime.matches(Regex("\\d{2}:\\d{2}"))) {
+                            scope.launch { snackbarHostState.showSnackbar("বৈধ শেষ সময় প্রয়োজন (HH:MM)") }
                         } else {
                             scope.launch {
                                 try {
@@ -490,18 +507,35 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                                             timeParts[1].toInt()
                                         )
                                     }
+                                    val endTimeParts = selectedEndTime.split(":")
+                                    val endCalendar = Calendar.getInstance().apply {
+                                        set(
+                                            selectedDate.substring(0, 4).toInt(),
+                                            selectedDate.substring(5, 7).toInt() - 1,
+                                            selectedDate.substring(8, 10).toInt(),
+                                            endTimeParts[0].toInt(),
+                                            endTimeParts[1].toInt()
+                                        )
+                                    }
+                                    if (endCalendar.timeInMillis <= calendar.timeInMillis) {
+                                        scope.launch { snackbarHostState.showSnackbar("শেষ সময় শুরুর সময়ের পরে হতে হবে") }
+                                        return@launch
+                                    }
                                     val result = AuthRepository().createSchedule(
                                         busId = assignedBus!!.busId,
                                         conductorId = user.uid,
                                         startTime = calendar.timeInMillis,
+                                        endTime = endCalendar.timeInMillis,
                                         date = selectedDate
                                     )
                                     if (result.isSuccess) {
                                         Toast.makeText(context, "শিডিউল তৈরি সফল", Toast.LENGTH_SHORT).show()
-                                        schedules = AuthRepository().getSchedulesForConductor(user.uid)
+                                        schedules = AuthRepository().getSchedulesForBus(assignedBus!!.busId)
+                                        schedules = schedules.filter { it.endTime >= System.currentTimeMillis() }
                                         showScheduleDialog = false
                                         selectedDate = ""
                                         selectedTime = ""
+                                        selectedEndTime = ""
                                     } else {
                                         error = result.exceptionOrNull()?.message ?: "শিডিউল তৈরি ব্যর্থ"
                                         scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }

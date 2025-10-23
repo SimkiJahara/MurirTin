@@ -278,6 +278,7 @@ class AuthRepository {
         busId: String,
         conductorId: String,
         startTime: Long,
+        endTime: Long,  // NEW: Add parameter
         date: String
     ): Result<Schedule> {
         return try {
@@ -287,6 +288,7 @@ class AuthRepository {
                 busId = busId,
                 conductorId = conductorId,
                 startTime = startTime,
+                endTime = endTime,  // NEW: Include in object
                 date = date,
                 createdAt = System.currentTimeMillis()
             )
@@ -386,14 +388,21 @@ class AuthRepository {
         directionsApi: DirectionsApi
     ): List<Request> {
         return try {
-            // Check for active schedule
-            val schedules = getSchedulesForConductor(conductorId)
+            // Get current busId to ensure we only fetch schedules for the assigned bus
+            val busId = getBusForConductor(conductorId) ?: return emptyList()
+
+            // Check for active schedule using the current bus
+            val schedules = getSchedulesForBus(busId)
             val currentTime = System.currentTimeMillis()
             val dateFormat = SimpleDateFormat("yyyy-MM-dd")
             val currentDate = dateFormat.format(Date(currentTime))
-            val activeSchedule = schedules.firstOrNull { it.date == currentDate && it.startTime <= currentTime }
+
+            // Check for active schedule within startTime and endTime
+            val activeSchedule = schedules.firstOrNull {
+                it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
+            }
             if (activeSchedule == null) {
-                Log.d("AuthRepository", "No active schedule for conductor $conductorId")
+                Log.d("AuthRepository", "No active schedule for conductor $conductorId on bus $busId")
                 return emptyList()
             }
 
