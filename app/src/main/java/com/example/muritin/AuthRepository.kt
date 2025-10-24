@@ -280,6 +280,11 @@ class AuthRepository {
         date: String
     ): Result<Schedule> {
         return try {
+            // Validate that the conductor is assigned to the bus
+            val assignedBusId = getBusForConductor(conductorId)
+            if (assignedBusId != busId) {
+                throw Exception("Conductor is not assigned to bus $busId")
+            }
             val scheduleId = database.getReference("schedules").push().key ?: throw Exception("Failed to generate scheduleId")
             val schedule = Schedule(
                 scheduleId = scheduleId,
@@ -308,6 +313,10 @@ class AuthRepository {
                 .await()
             snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Schedule::class.java)
+            }.filter { schedule ->
+                // Only include schedules where the conductor is still assigned to the bus
+                val assignedBusId = getBusForConductor(conductorId)
+                assignedBusId == schedule.busId && schedule.endTime >= System.currentTimeMillis()
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get schedules failed: ${e.message}", e)
@@ -324,10 +333,32 @@ class AuthRepository {
                 .await()
             snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Schedule::class.java)
+            }.filter { schedule ->
+                // Only include schedules where the conductor is still assigned to the bus
+                val assignedConductorId = getAssignedConductorForBus(busId)
+                assignedConductorId == schedule.conductorId && schedule.endTime >= System.currentTimeMillis()
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get schedules for bus failed: ${e.message}", e)
             emptyList()
+        }
+    }
+
+    suspend fun cleanExpiredSchedules(): Result<Unit> {
+        return try {
+            val currentTime = System.currentTimeMillis()
+            val snapshot = database.getReference("schedules").get().await()
+            snapshot.children.forEach { child ->
+                val schedule = child.getValue(Schedule::class.java) ?: return@forEach
+                if (schedule.endTime < currentTime) {
+                    child.ref.removeValue().await()
+                    Log.d("AuthRepository", "Removed expired schedule: ${schedule.scheduleId}")
+                }
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Clean expired schedules failed: ${e.message}", e)
+            Result.failure(e)
         }
     }
 

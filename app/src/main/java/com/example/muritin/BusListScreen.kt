@@ -48,6 +48,8 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                 }
                 return@LaunchedEffect
             }
+            // Clean up expired schedules
+            AuthRepository().cleanExpiredSchedules()
             val snapshot = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/")
                 .getReference("buses")
                 .orderByChild("ownerId")
@@ -58,9 +60,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
             buses = snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
             conductors = AuthRepository().getConductorsForOwner(user.uid)
             schedules = buses.associate { bus ->
-                bus.busId to AuthRepository().getSchedulesForBus(bus.busId).filter {
-                    it.endTime >= System.currentTimeMillis() // NEW: Filter current and upcoming schedules
-                }
+                bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
             }
             isLoading = false
             Log.d("BusListScreen", "Fetched ${buses.size} buses")
@@ -136,7 +136,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                     }
                                 }
                                 Text("অ্যাসাইনড কন্ডাক্টর: ${conductors.find { it.uid == assignedConductorId }?.name ?: assignedConductorId ?: "কোনোটি নেই"}")
-                                Text("শিডিউল তালিকা:")
+                                Text("শিডিউল তালিকা (চলমান এবং আসন্ন):")
                                 schedules[bus.busId]?.forEach { schedule ->
                                     Text(
                                         "তারিখ: ${schedule.date}, শুরুর সময়: ${
@@ -178,9 +178,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                                                 Toast.makeText(context, "বাস মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
                                                                 buses = AuthRepository().getBusesForOwner(user.uid)
                                                                 schedules = buses.associate { bus ->
-                                                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId).filter {
-                                                                        it.endTime >= System.currentTimeMillis()
-                                                                    }
+                                                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
                                                                 }
                                                             } else {
                                                                 error = "বাস মুছে ফেলতে ব্যর্থ: ${result.exceptionOrNull()?.message}"
@@ -284,9 +282,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                 }
                                 buses = AuthRepository().getBusesForOwner(user.uid)
                                 schedules = buses.associate { bus ->
-                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId).filter {
-                                        it.endTime >= System.currentTimeMillis()
-                                    }
+                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
                                 }
                             }
                             showAssignDialog = false
