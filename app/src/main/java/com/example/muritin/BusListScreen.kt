@@ -58,7 +58,9 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
             buses = snapshot.children.mapNotNull { it.getValue(Bus::class.java) }
             conductors = AuthRepository().getConductorsForOwner(user.uid)
             schedules = buses.associate { bus ->
-                bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
+                bus.busId to AuthRepository().getSchedulesForBus(bus.busId).filter {
+                    it.endTime >= System.currentTimeMillis() // NEW: Filter current and upcoming schedules
+                }
             }
             isLoading = false
             Log.d("BusListScreen", "Fetched ${buses.size} buses")
@@ -106,7 +108,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .weight(1f) // Ensures LazyColumn takes available space
+                        .weight(1f)
                 ) {
                     items(buses) { bus ->
                         var assignedConductorId by remember(bus.busId) { mutableStateOf<String?>(null) }
@@ -139,6 +141,8 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                     Text(
                                         "তারিখ: ${schedule.date}, শুরুর সময়: ${
                                             SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(schedule.startTime))
+                                        }, শেষের সময়: ${
+                                            SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(schedule.endTime))
                                         }"
                                     )
                                 } ?: Text("কোনো শিডিউল নেই")
@@ -174,7 +178,9 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                                                 Toast.makeText(context, "বাস মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
                                                                 buses = AuthRepository().getBusesForOwner(user.uid)
                                                                 schedules = buses.associate { bus ->
-                                                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
+                                                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId).filter {
+                                                                        it.endTime >= System.currentTimeMillis()
+                                                                    }
                                                                 }
                                                             } else {
                                                                 error = "বাস মুছে ফেলতে ব্যর্থ: ${result.exceptionOrNull()?.message}"
@@ -278,7 +284,9 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                 }
                                 buses = AuthRepository().getBusesForOwner(user.uid)
                                 schedules = buses.associate { bus ->
-                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId)
+                                    bus.busId to AuthRepository().getSchedulesForBus(bus.busId).filter {
+                                        it.endTime >= System.currentTimeMillis()
+                                    }
                                 }
                             }
                             showAssignDialog = false

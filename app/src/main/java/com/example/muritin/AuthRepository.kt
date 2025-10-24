@@ -1,4 +1,3 @@
-
 package com.example.muritin
 
 import android.util.Log
@@ -129,7 +128,6 @@ class AuthRepository {
             Result.failure(e)
         }
     }
-
 
     suspend fun registerBus(
         ownerId: String,
@@ -278,7 +276,7 @@ class AuthRepository {
         busId: String,
         conductorId: String,
         startTime: Long,
-        endTime: Long,  // NEW: Add parameter
+        endTime: Long,
         date: String
     ): Result<Schedule> {
         return try {
@@ -288,7 +286,7 @@ class AuthRepository {
                 busId = busId,
                 conductorId = conductorId,
                 startTime = startTime,
-                endTime = endTime,  // NEW: Include in object
+                endTime = endTime,
                 date = date,
                 createdAt = System.currentTimeMillis()
             )
@@ -332,6 +330,7 @@ class AuthRepository {
             emptyList()
         }
     }
+
     suspend fun submitTripRequest(
         riderId: String,
         pickup: String,
@@ -340,7 +339,8 @@ class AuthRepository {
         pickupLatLng: LatLng,
         destinationLatLng: LatLng,
         apiKey: String,
-        directionsApi: DirectionsApi
+        directionsApi: DirectionsApi,
+        busId: String? = null
     ): Result<Request> {
         return try {
             val origin = "${pickupLatLng.latitude},${pickupLatLng.longitude}"
@@ -361,7 +361,7 @@ class AuthRepository {
             val request = Request(
                 id = requestId,
                 riderId = riderId,
-                busId = null,  // Set to null, will be assigned on acceptance
+                busId = busId,
                 pickup = pickup,
                 destination = destination,
                 pickupLatLng = LatLngData(pickupLatLng.latitude, pickupLatLng.longitude),
@@ -388,30 +388,28 @@ class AuthRepository {
         directionsApi: DirectionsApi
     ): List<Request> {
         return try {
-            // Get current busId to ensure we only fetch schedules for the assigned bus
             val busId = getBusForConductor(conductorId) ?: return emptyList()
 
-            // Check for active schedule using the current bus
             val schedules = getSchedulesForBus(busId)
             val currentTime = System.currentTimeMillis()
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd")
-            val currentDate = dateFormat.format(Date(currentTime))
 
-            // Check for active schedule within startTime and endTime
             val activeSchedule = schedules.firstOrNull {
-                it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
+                it.startTime <= currentTime && it.endTime >= currentTime
             }
             if (activeSchedule == null) {
-                Log.d("AuthRepository", "No active schedule for conductor $conductorId on bus $busId")
+                Log.d("AuthRepository", "No active schedule for conductor $conductorId")
                 return emptyList()
             }
 
-            val allRequestsSnapshot = database.getReference("requests")
-                .orderByChild("status")
-                .equalTo("Pending")
-                .get().await()
-            val pendingRequests = allRequestsSnapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Request::class.java)
+            // Query requests by busId and status="Pending"
+            val snapshot = database.getReference("requests")
+                .orderByChild("busId")
+                .equalTo(busId)
+                .get()
+                .await()
+            val pendingRequests = snapshot.children.mapNotNull { child: DataSnapshot ->
+                val request = child.getValue(Request::class.java)
+                if (request?.status == "Pending") request else null
             }
 
             val routeMatching = pendingRequests.filter { req: Request ->
@@ -434,6 +432,7 @@ class AuthRepository {
                     false
                 }
             }
+            Log.d("AuthRepository", "Fetched ${nearbyRequests.size} pending requests for bus $busId")
             nearbyRequests
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get pending requests failed: ${e.message}", e)
@@ -450,7 +449,13 @@ class AuthRepository {
             val busId = getBusForConductor(conductorId) ?: throw Exception("No bus assigned")
             val bus = getBus(busId) ?: throw Exception("Bus not found")
 
-            // Validate route match
+            if (req.busId != null && req.busId != busId) throw Exception("Request not for this bus")
+
+            val schedules = getSchedulesForConductor(conductorId)
+            val currentTime = System.currentTimeMillis()
+            val activeSchedule = schedules.firstOrNull { it.startTime <= currentTime && it.endTime >= currentTime }
+            if (activeSchedule == null) throw Exception("No active schedule")
+
             val pickupIndex = bus.stops.indexOf(req.pickup)
             val destIndex = bus.stops.indexOf(req.destination)
             if (pickupIndex == -1 || destIndex == -1 || pickupIndex >= destIndex) throw Exception("Request does not match bus route")
@@ -461,10 +466,10 @@ class AuthRepository {
                 "conductorId" to conductorId,
                 "otp" to otp,
                 "acceptedBy" to conductorId,
-                "busId" to busId
+                "busId" to busId,
+                "scheduleId" to activeSchedule.scheduleId
             )
 
-            // Update fare if bus has custom fare
             val customBaseFare = bus.fares[req.pickup]?.get(req.destination)
             if (customBaseFare != null) {
                 val totalFare = customBaseFare * req.seats
@@ -482,12 +487,23 @@ class AuthRepository {
 
     suspend fun getRequestsForUser(userId: String): List<Request> {
         return try {
+            val currentTime = System.currentTimeMillis()
+
             val snapshot = database.getReference("requests")
                 .orderByChild("riderId")
                 .equalTo(userId)
                 .get().await()
-            snapshot.children.mapNotNull { child: DataSnapshot ->
+            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Request::class.java)
+            }
+
+            requests.filter { request ->
+                if (request.status == "Accepted" && request.scheduleId != null) {
+                    val schedule = getSchedule(request.scheduleId) ?: return@filter false
+                    schedule.endTime >= currentTime
+                } else {
+                    true
+                }
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
@@ -564,6 +580,7 @@ class AuthRepository {
             Log.e("AuthRepository", "Failed to update user role: ${e.message}", e)
         }
     }
+
     suspend fun ensureOwnerRole(uid: String) {
         try {
             val userSnapshot = database.getReference("users").child(uid).get().await()
@@ -596,19 +613,37 @@ class AuthRepository {
         }
     }
 
-    // Add this function for conductor's accepted requests (new)
     suspend fun getAcceptedRequestsForConductor(conductorId: String): List<Request> {
         return try {
+            val currentTime = System.currentTimeMillis()
             val snapshot = database.getReference("requests")
                 .orderByChild("acceptedBy")
                 .equalTo(conductorId)
                 .get().await()
-            snapshot.children.mapNotNull { child: DataSnapshot ->
+            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Request::class.java)
+            }
+            requests.filter { request ->
+                if (request.scheduleId != null) {
+                    val schedule = getSchedule(request.scheduleId) ?: return@filter false
+                    schedule.endTime >= currentTime
+                } else {
+                    true
+                }
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get accepted requests failed: ${e.message}", e)
             emptyList()
+        }
+    }
+
+    suspend fun getSchedule(scheduleId: String): Schedule? {
+        return try {
+            val snapshot = database.getReference("schedules").child(scheduleId).get().await()
+            snapshot.getValue(Schedule::class.java)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get schedule failed: ${e.message}", e)
+            null
         }
     }
 }

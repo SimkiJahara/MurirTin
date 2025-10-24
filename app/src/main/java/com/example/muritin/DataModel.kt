@@ -1,4 +1,3 @@
-
 package com.example.muritin
 
 import com.google.android.gms.maps.model.LatLng
@@ -42,15 +41,17 @@ data class Schedule(
     val busId: String = "",
     val conductorId: String = "",
     val startTime: Long = 0L,
-    val endTime: Long = 0L,  // NEW: Add this field
+    val endTime: Long = 0L,
     val date: String = "",
     val createdAt: Long = 0L
 )
+
 @Serializable
 data class Request(
     val id: String = "",
     val riderId: String = "",
     val busId: String? = null,
+    val scheduleId: String? = null,  // NEW: Added to tie request to specific schedule
     val pickup: String = "",
     val destination: String = "",
     val pickupLatLng: LatLngData? = null,

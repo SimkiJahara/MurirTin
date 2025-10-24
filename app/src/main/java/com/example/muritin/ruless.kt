@@ -338,15 +338,15 @@ class ruless {
         ".validate": "newData.hasChild('conductorId') && newData.child('conductorId').isString()"
       }
     },
-    "schedules": {
-      ".indexOn": ["busId", "conductorId"],
-      ".read": "auth != null",
-      "$scheduleId": {
-        ".read": "auth != null",
-        ".write": "auth != null && newData.child('conductorId').val() == auth.uid && root.child('busAssignments').child(newData.child('busId').val()).child('conductorId').val() == auth.uid",
-        ".validate": "newData.hasChildren(['busId', 'conductorId', 'startTime', 'date', 'createdAt']) && newData.child('startTime').isNumber() && newData.child('date').isString() && newData.child('createdAt').isNumber()"
-      }
-    },
+   "schedules": {
+  ".indexOn": ["busId", "conductorId"],
+  ".read": "auth != null",
+  "$scheduleId": {
+    ".read": "auth != null",
+    ".write": "auth != null && newData.child('conductorId').val() == auth.uid && root.child('busAssignments').child(newData.child('busId').val()).child('conductorId').val() == auth.uid",
+    ".validate": "newData.hasChildren(['busId', 'conductorId', 'startTime', 'endTime', 'date', 'createdAt']) && newData.child('startTime').isNumber() && newData.child('endTime').isNumber() && newData.child('date').isString() && newData.child('createdAt').isNumber()"
+  }
+},
     "requests": {
       ".indexOn": ["status", "riderId", "acceptedBy", "busId"],
       ".read": "auth != null && (query.orderByChild == 'status' && query.equalTo == 'Pending' && root.child('users').child(auth.uid).child('role').val() == 'Conductor') || (query.orderByChild == 'riderId' && query.equalTo == auth.uid) || (query.orderByChild == 'acceptedBy' && query.equalTo == auth.uid)",
