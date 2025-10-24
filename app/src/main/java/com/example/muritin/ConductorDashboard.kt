@@ -45,8 +45,7 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
     val snackbarHostState = remember { SnackbarHostState() }
     var showScheduleDialog by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf("") }
-    var selectedEndDate by remember { mutableStateOf("") }
-    var selectedTime by remember { mutableStateOf("") }
+    var selectedStartTime by remember { mutableStateOf("") }
     var selectedEndTime by remember { mutableStateOf("") }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
@@ -96,7 +95,7 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
             val busId = snapshot.children.firstOrNull()?.key
             if (busId != null) {
                 assignedBus = AuthRepository().getBus(busId)
-                schedules = AuthRepository().getSchedulesForBus(busId)
+                schedules = AuthRepository().getSchedulesForConductor(user.uid)
                 schedules = schedules.filter { it.endTime >= System.currentTimeMillis() }
                 acceptedRequests = AuthRepository().getAcceptedRequestsForConductor(user.uid)
             } else {
@@ -457,25 +456,17 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     OutlinedTextField(
                         value = selectedDate,
                         onValueChange = { selectedDate = it },
-                        label = { Text("শুরুর তারিখ (YYYY-MM-DD)") },
+                        label = { Text("তারিখ (YYYY-MM-DD)") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = selectedDate.isNotBlank() && !selectedDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
-                        value = selectedEndDate,
-                        onValueChange = { selectedEndDate = it },
-                        label = { Text("শেষের তারিখ (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = selectedEndDate.isNotBlank() && !selectedEndDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = selectedTime,
-                        onValueChange = { selectedTime = it },
+                        value = selectedStartTime,
+                        onValueChange = { selectedStartTime = it },
                         label = { Text("শুরুর সময় (HH:MM, 24-ঘন্টা ফরম্যাট)") },
                         modifier = Modifier.fillMaxWidth(),
-                        isError = selectedTime.isNotBlank() && !selectedTime.matches(Regex("\\d{2}:\\d{2}"))
+                        isError = selectedStartTime.isNotBlank() && !selectedStartTime.matches(Regex("\\d{2}:\\d{2}"))
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
@@ -491,45 +482,42 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                 Button(
                     onClick = {
                         if (!selectedDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                            scope.launch { snackbarHostState.showSnackbar("বৈধ শুরুর তারিখ প্রয়োজন (YYYY-MM-DD)") }
-                        } else if (!selectedEndDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                            scope.launch { snackbarHostState.showSnackbar("বৈধ শেষের তারিখ প্রয়োজন (YYYY-MM-DD)") }
-                        } else if (!selectedTime.matches(Regex("\\d{2}:\\d{2}"))) {
+                            scope.launch { snackbarHostState.showSnackbar("বৈধ তারিখ প্রয়োজন (YYYY-MM-DD)") }
+                        } else if (!selectedStartTime.matches(Regex("\\d{2}:\\d{2}"))) {
                             scope.launch { snackbarHostState.showSnackbar("বৈধ শুরুর সময় প্রয়োজন (HH:MM)") }
                         } else if (!selectedEndTime.matches(Regex("\\d{2}:\\d{2}"))) {
-                            scope.launch { snackbarHostState.showSnackbar("বৈধ শেষ সময় প্রয়োজন (HH:MM)") }
+                            scope.launch { snackbarHostState.showSnackbar("বৈধ শেষের সময় প্রয়োজন (HH:MM)") }
                         } else {
                             scope.launch {
                                 try {
-                                    val timeParts = selectedTime.split(":")
-                                    val startCalendar = Calendar.getInstance().apply {
-                                        set(
-                                            selectedDate.substring(0, 4).toInt(),
-                                            selectedDate.substring(5, 7).toInt() - 1,
-                                            selectedDate.substring(8, 10).toInt(),
-                                            timeParts[0].toInt(),
-                                            timeParts[1].toInt()
-                                        )
-                                    }
+                                    val startTimeParts = selectedStartTime.split(":")
                                     val endTimeParts = selectedEndTime.split(":")
-                                    val endCalendar = Calendar.getInstance().apply {
-                                        set(
-                                            selectedEndDate.substring(0, 4).toInt(),
-                                            selectedEndDate.substring(5, 7).toInt() - 1,
-                                            selectedEndDate.substring(8, 10).toInt(),
-                                            endTimeParts[0].toInt(),
-                                            endTimeParts[1].toInt()
-                                        )
-                                    }
-                                    if (endCalendar.timeInMillis <= startCalendar.timeInMillis) {
+                                    val calendar = Calendar.getInstance()
+                                    calendar.set(
+                                        selectedDate.substring(0, 4).toInt(),
+                                        selectedDate.substring(5, 7).toInt() - 1,
+                                        selectedDate.substring(8, 10).toInt(),
+                                        startTimeParts[0].toInt(),
+                                        startTimeParts[1].toInt()
+                                    )
+                                    val startTime = calendar.timeInMillis
+                                    calendar.set(
+                                        selectedDate.substring(0, 4).toInt(),
+                                        selectedDate.substring(5, 7).toInt() - 1,
+                                        selectedDate.substring(8, 10).toInt(),
+                                        endTimeParts[0].toInt(),
+                                        endTimeParts[1].toInt()
+                                    )
+                                    val endTime = calendar.timeInMillis
+                                    if (endTime <= startTime) {
                                         scope.launch { snackbarHostState.showSnackbar("শেষের সময় শুরুর সময়ের পরে হতে হবে") }
                                         return@launch
                                     }
                                     val result = AuthRepository().createSchedule(
                                         busId = assignedBus!!.busId,
                                         conductorId = user.uid,
-                                        startTime = startCalendar.timeInMillis,
-                                        endTime = endCalendar.timeInMillis,
+                                        startTime = startTime,
+                                        endTime = endTime,
                                         date = selectedDate
                                     )
                                     if (result.isSuccess) {
@@ -538,8 +526,7 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                                         schedules = schedules.filter { it.endTime >= System.currentTimeMillis() }
                                         showScheduleDialog = false
                                         selectedDate = ""
-                                        selectedEndDate = ""
-                                        selectedTime = ""
+                                        selectedStartTime = ""
                                         selectedEndTime = ""
                                     } else {
                                         error = result.exceptionOrNull()?.message ?: "শিডিউল তৈরি ব্যর্থ"
@@ -557,7 +544,9 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showScheduleDialog = false }) { Text("বাতিল") }
+                TextButton(onClick = { showScheduleDialog = false }) {
+                    Text("বাতিল")
+                }
             }
         )
     }

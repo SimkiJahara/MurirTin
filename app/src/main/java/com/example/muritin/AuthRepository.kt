@@ -389,27 +389,25 @@ class AuthRepository {
     ): List<Request> {
         return try {
             val busId = getBusForConductor(conductorId) ?: return emptyList()
-
             val schedules = getSchedulesForBus(busId)
             val currentTime = System.currentTimeMillis()
-
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd")
+            val currentDate = dateFormat.format(Date(currentTime))
             val activeSchedule = schedules.firstOrNull {
-                it.startTime <= currentTime && it.endTime >= currentTime
+                it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
             }
             if (activeSchedule == null) {
-                Log.d("AuthRepository", "No active schedule for conductor $conductorId")
+                Log.d("AuthRepository", "No active schedule for conductor $conductorId on $currentDate")
                 return emptyList()
             }
 
-            // Query requests by busId and status="Pending"
             val snapshot = database.getReference("requests")
-                .orderByChild("busId")
-                .equalTo(busId)
+                .orderByChild("status")
+                .equalTo("Pending")
                 .get()
                 .await()
             val pendingRequests = snapshot.children.mapNotNull { child: DataSnapshot ->
-                val request = child.getValue(Request::class.java)
-                if (request?.status == "Pending") request else null
+                child.getValue(Request::class.java)
             }
 
             val routeMatching = pendingRequests.filter { req: Request ->
@@ -449,11 +447,13 @@ class AuthRepository {
             val busId = getBusForConductor(conductorId) ?: throw Exception("No bus assigned")
             val bus = getBus(busId) ?: throw Exception("Bus not found")
 
-            if (req.busId != null && req.busId != busId) throw Exception("Request not for this bus")
-
             val schedules = getSchedulesForConductor(conductorId)
             val currentTime = System.currentTimeMillis()
-            val activeSchedule = schedules.firstOrNull { it.startTime <= currentTime && it.endTime >= currentTime }
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd")
+            val currentDate = dateFormat.format(Date(currentTime))
+            val activeSchedule = schedules.firstOrNull {
+                it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
+            }
             if (activeSchedule == null) throw Exception("No active schedule")
 
             val pickupIndex = bus.stops.indexOf(req.pickup)
@@ -488,7 +488,6 @@ class AuthRepository {
     suspend fun getRequestsForUser(userId: String): List<Request> {
         return try {
             val currentTime = System.currentTimeMillis()
-
             val snapshot = database.getReference("requests")
                 .orderByChild("riderId")
                 .equalTo(userId)
@@ -496,7 +495,6 @@ class AuthRepository {
             val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Request::class.java)
             }
-
             requests.filter { request ->
                 if (request.status == "Accepted" && request.scheduleId != null) {
                     val schedule = getSchedule(request.scheduleId) ?: return@filter false
