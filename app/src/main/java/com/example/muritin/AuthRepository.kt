@@ -1,6 +1,8 @@
 package com.example.muritin
 
 import android.util.Log
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
@@ -428,6 +430,8 @@ class AuthRepository {
             val currentTime = System.currentTimeMillis()
             val dateFormat = SimpleDateFormat("yyyy-MM-dd")
             val currentDate = dateFormat.format(Date(currentTime))
+            val geoHashesofThisBus: MutableList<String> = mutableListOf()
+
             val activeSchedule = schedules.firstOrNull {
                 it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
             }
@@ -444,13 +448,37 @@ class AuthRepository {
             val pendingRequests = snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Request::class.java)
             }
-            //val geoLocation = GeoLocation(Request?.latitude ?: 0.00 , originLatLng?.longitude ?: 0.00)
-            //originGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+
+            for (req in pendingRequests) {
+                var geoLocation = GeoLocation(req.pickupLatLng?.lat ?: , req.pickupLatLng?.lng ?: )
+                req.pickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+                geoLocation = GeoLocation(req.destinationLatLng?.lat ?: , req.destinationLatLng?.lng ?: )
+                req.destinationGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+            }
+            //Collecting all geohashes for this bus
+            if (bus.route != null) {
+                if (bus.route.originLoc != null) {
+                    val originGeohash = bus.route.originLoc.geohash
+                    if (originGeohash.isNotEmpty()) {
+                        geoHashesofThisBus.add(originGeohash)
+                    }
+                }
+                if (bus.route.destinationLoc != null) {
+                    val destGeohash = bus.route.destinationLoc.geohash
+                    if (destGeohash.isNotEmpty()) {
+                        geoHashesofThisBus.add(destGeohash)
+                    }
+                }
+                for (point in bus.route.stopPointsLoc) {
+                    val stopGeohash = point.geohash
+                    if (stopGeohash.isNotEmpty()) {
+                        geoHashesofThisBus.add(stopGeohash)
+                    }
+                }
+            }
 
             val routeMatching = pendingRequests.filter { req: Request ->
-                val pickupIndex = bus.stops.indexOf(req.pickup)
-                val destIndex = bus.stops.indexOf(req.destination)
-                pickupIndex != -1 && destIndex != -1 && pickupIndex < destIndex
+                  geoHashesofThisBus.contains(req.pickupGeoHash) && geoHashesofThisBus.contains(req.destinationGeoHash)
             }
 
             val nearbyRequests = routeMatching.filter { req: Request ->

@@ -78,6 +78,8 @@ data class Request(
     val destination: String = "",
     val pickupLatLng: LatLngData? = null,
     val destinationLatLng: LatLngData? = null,
+    var pickupGeoHash: String = "",
+    var destinationGeoHash: String = "",
     val seats: Int = 1,
     val fare: Int = 0,
     val status: String = "Pending",
