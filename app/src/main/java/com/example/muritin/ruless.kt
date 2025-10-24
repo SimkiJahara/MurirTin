@@ -31,9 +31,9 @@ class ruless {
     },
     "buses": {
       ".indexOn": ["ownerId"],
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'Owner'",
+      ".read": "auth != null",
       "$busId": {
-        ".read": "auth != null && (data.child('ownerId').val() == auth.uid || root.child('busAssignments').child($busId).child('conductorId').val() == auth.uid)",
+        ".read": "auth != null",
         ".write": "auth != null && (newData.child('ownerId').val() == auth.uid || (data.child('ownerId').val() == auth.uid && !newData.exists()))",
         ".validate": "newData.hasChildren(['busId', 'ownerId', 'name', 'number', 'fitnessCertificate', 'taxToken', 'stops', 'fares', 'createdAt'])",
         "fares": {

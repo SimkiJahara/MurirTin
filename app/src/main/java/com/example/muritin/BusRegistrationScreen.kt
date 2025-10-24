@@ -17,15 +17,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.firebase.geofire.GeoFireUtils
+import com.firebase.geofire.GeoLocation
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
-import com.google.android.libraries.places.api.model.Place
-import com.google.android.libraries.places.api.model.RectangularBounds
-import com.google.android.libraries.places.api.model.TypeFilter
-import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.firebase.auth.FirebaseAuth
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.Dispatchers
@@ -67,12 +65,17 @@ fun BusRegistrationScreen(navController: NavHostController) {
     val coroutineScope = rememberCoroutineScope()
 
     var originAddress by remember { mutableStateOf("") }
+    var originGeoHash by remember { mutableStateOf("") }
     var originLatLng by remember { mutableStateOf<LatLng?>(null) }
     var destinationAddress by remember { mutableStateOf("") }
-    var stopLatLng by remember { mutableStateOf<LatLng?>(null) }
-    var stopAddress by remember { mutableStateOf("") }
+    var destGeoHash by remember { mutableStateOf("") }
     var destinationLatLng by remember { mutableStateOf<LatLng?>(null) }
-    val stops = remember { mutableStateListOf<Pair<String, LatLng>>() }
+    var stopAddress by remember { mutableStateOf("") }
+    var stopGeoHash by remember { mutableStateOf("") }
+    var stopLatLng by remember { mutableStateOf<LatLng?>(null) }
+    var BusRouteObject = remember { BusRoute() }
+
+    val stopsList = remember { mutableStateListOf<Pair<String, LatLng>>() }
     val polylinePoints = remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var returned_points_from_directionapi by remember { mutableStateOf("") }
     val initialPosition = LatLng(23.8103, 90.4125) // Dhaka
@@ -82,6 +85,7 @@ fun BusRegistrationScreen(navController: NavHostController) {
     var screenForOrigin by remember { mutableStateOf(true) }
     var screenForDest by remember { mutableStateOf(false) }
     var screenForStops by remember { mutableStateOf(false) }
+    var anotherStopButton by remember { mutableStateOf(false)}
     val mapProperties = MapProperties(isTrafficEnabled = true)
     val uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false)
     val scrollState = rememberScrollState()
@@ -225,6 +229,9 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     error = "যাত্রা শুরুর অবস্থান নির্বাচন করুন"
                                     scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else {
+                                    val geoLocation = GeoLocation(originLatLng?.latitude ?: 0.00 , originLatLng?.longitude ?: 0.00)
+                                    originGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+                                    BusRouteObject.originLoc = PointLocation(originAddress, originLatLng!!.latitude, originLatLng!!.longitude, originGeoHash)
                                     screenForOrigin = false
                                     screenForDest = true
                                 }
@@ -307,6 +314,9 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     error = "গন্তব্য নির্বাচন করুন"
                                     scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else {
+                                    val geoLocation = GeoLocation(destinationLatLng?.latitude ?: 0.00 , destinationLatLng?.longitude ?: 0.00)
+                                    destGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+                                    BusRouteObject.destinationLoc = PointLocation (destinationAddress, destinationLatLng!!.latitude, destinationLatLng!!.longitude, destGeoHash)
                                     screenForOrigin = false
                                     screenForDest = false
                                     screenForStops = true
@@ -392,8 +402,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                 )
                             }
                             //Previous stop markers
-                            if(stops != null) {
-                                stops.forEachIndexed { index, stop ->
+                            if(stopsList != null) {
+                                stopsList.forEachIndexed { index, stop ->
                                     Marker(
                                         state = MarkerState(position = stop.second),
                                         title = "স্টপ ${index + 1}",
@@ -412,10 +422,15 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             }
                         }
                         if(stopLatLng != null) {
+                            anotherStopButton = true}
+                        if(anotherStopButton){
                             Spacer(modifier = Modifier.height(8.dp))
                             OutlinedButton(
                                 onClick = {
-                                    stops.add(Pair(stopAddress, stopLatLng) as Pair<String, LatLng>)
+                                    val geoLocation = GeoLocation(stopLatLng?.latitude ?: 0.00 , stopLatLng?.longitude ?: 0.00)
+                                    stopGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+                                    BusRouteObject.stopPointsLoc.add(PointLocation(stopAddress, stopLatLng!!.latitude, stopLatLng!!.longitude, stopGeoHash))
+                                    stopsList.add(Pair(stopAddress, stopLatLng) as Pair<String, LatLng>)
                                     stopAddress = ""
                                     stopLatLng = null
                                     screenForDest = false
@@ -438,13 +453,22 @@ fun BusRegistrationScreen(navController: NavHostController) {
                         ) {
                             Button(
                                 onClick = {
+                                    anotherStopButton = false
                                     if (originLatLng != null && destinationLatLng != null) {
+                                        if(stopLatLng!=null){
+                                            //Adding the current selected stop location
+                                            val geoLocation = GeoLocation(stopLatLng?.latitude ?: 0.00 , stopLatLng?.longitude ?: 0.00)
+                                            stopGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+                                            BusRouteObject.stopPointsLoc.add(PointLocation(stopAddress, stopLatLng!!.latitude, stopLatLng!!.longitude, stopGeoHash))
+                                        }
                                         coroutineScope.launch {
                                             val originStr = "${originLatLng!!.latitude},${originLatLng!!.longitude}"
                                             val destStr = "${destinationLatLng!!.latitude},${destinationLatLng!!.longitude}"
-                                            val waypoints = if (stops.isNotEmpty() && stopLatLng != null) {  //for mulitple stops, the last stop needs to be added
-                                                stops.add(Pair(stopAddress, stopLatLng) as Pair<String, LatLng>)
-                                                stops.joinToString("|") { "${it.second.latitude},${it.second.longitude}" }
+                                            if(stopLatLng != null){  //The last stop needs to be added
+                                                stopsList.add(Pair(stopAddress, stopLatLng) as Pair<String, LatLng>)
+                                            }
+                                            val waypoints = if (stopsList.isNotEmpty()) {
+                                                stopsList.joinToString("|") { "${it.second.latitude},${it.second.longitude}" }
                                             } else if (stopLatLng != null){   //when only selecting one stop
                                                 "${stopLatLng!!.latitude},${stopLatLng!!.longitude}"
                                             } else { null }
@@ -493,7 +517,10 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     originLatLng = null
                                     destinationAddress = ""
                                     destinationLatLng = null
-                                    stops.clear()
+                                    stopAddress = ""
+                                    stopLatLng = null
+                                    stopsList.clear()
+                                    BusRouteObject.clear()
                                     polylinePoints.value = emptyList()
                                     coroutineScope.launch {
                                         cameraPositionState.animate(
@@ -530,14 +557,20 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             if (originAddress.isNotEmpty()) {
                                 Text(text = "যাত্রা শুরু: $originAddress", style = MaterialTheme.typography.bodySmall)
                             }
-                            if (stops.isNotEmpty()) {
-                                stops.forEachIndexed { index, stop ->
+                            if (stopsList.isNotEmpty()) {
+                                stopsList.forEachIndexed { index, stop ->
                                     Text(text = "স্টপ: ${stop.first}", style = MaterialTheme.typography.bodySmall)
                                 }
+                            }
+                            if (stopAddress.isNotEmpty()) {  //Currently selected stop, that is not in the list yet
+                                Text(text = "স্টপ: $stopAddress", style = MaterialTheme.typography.bodySmall)
                             }
                             if (destinationAddress.isNotEmpty()) {
                                 Text(text = "গন্তব্য: $destinationAddress", style = MaterialTheme.typography.bodySmall)
                             }
+                            Text("${BusRouteObject.originLoc}")
+                            Text("${BusRouteObject.destinationLoc}")
+                            Text("${BusRouteObject.stopPointsLoc}")
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -566,7 +599,11 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             if (name.isBlank() || number.isBlank() || fitnessCertificate.isBlank() || taxToken.isBlank()) {
                                 error = "সকল ক্ষেত্র পূরণ করুন"
                                 scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                            } else if (fares.isEmpty()) {
+                            } else if (BusRouteObject.originLoc == null || BusRouteObject.destinationLoc == null){
+                                error = "যাত্রা শুরুর স্থান এবং গন্তব্য যোগ করুন"
+                                scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                            }
+                            else if (fares.isEmpty()) {
                                 error = "কমপক্ষে একটি ভাড়া যোগ করুন"
                                 scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                             } else {
@@ -576,18 +613,20 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     Log.d("BusRegistrationScreen", "Registering bus for user: ${user.uid}")
                                     try {
                                         AuthRepository().ensureOwnerRole(user.uid)
-                                        val stopsList = mutableListOf<String>()
-                                        if (originAddress.isNotEmpty()) stopsList.add(originAddress)
-                                        stopsList.addAll(stops.map { it.first })
-                                        if (destinationAddress.isNotEmpty()) stopsList.add(destinationAddress)
+                                        val stopsNameList = mutableListOf<String>()
+                                        if (originAddress.isNotEmpty()) stopsNameList.add(originAddress)
+                                        stopsNameList.addAll(stopsList.map { it.first })
+                                        if (destinationAddress.isNotEmpty()) stopsNameList.add(destinationAddress)
                                         Log.d("BusRegistrationScreen", "Stops: $stopsList, Fares: $fares")
+                                        Log.d("BusRegistrationScreen", "Route: $BusRouteObject, originLoc: ${BusRouteObject.originLoc}, destinationLoc: ${BusRouteObject.destinationLoc}, stopPointsLoc: ${BusRouteObject.stopPointsLoc}")
                                         val result = AuthRepository().registerBus(
                                             ownerId = user.uid,
                                             name = name,
                                             number = number,
                                             fitnessCertificate = fitnessCertificate,
                                             taxToken = taxToken,
-                                            stops = stopsList,
+                                            stops = stopsNameList,
+                                            route = BusRouteObject,
                                             fares = fares
                                         )
                                         isLoading = false
@@ -604,7 +643,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     } catch (e: Exception) {
                                         isLoading = false
                                         error = "Role verification failed: ${e.message}"
-                                        scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                        scope.launch { snackbarHostState.showSnackbar(error ?: "Unknown error") }
+                                        Log.e("BusRegistrationScreen", "Registration error: ${e.message}", e)
                                     }
                                 }
                             }
@@ -649,11 +689,11 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             expanded = stopExpanded,
                             onDismissRequest = { stopExpanded = false }
                         ) {
-                            val stopsList = mutableListOf<String>()
-                            if (originAddress.isNotEmpty()) stopsList.add(originAddress)
-                            stopsList.addAll(stops.map { it.first })
-                            if (destinationAddress.isNotEmpty()) stopsList.add(destinationAddress)
-                            stopsList.forEach { stop ->
+                            val stopsNameList = mutableListOf<String>()
+                            if (originAddress.isNotEmpty()) stopsNameList.add(originAddress)
+                            stopsNameList.addAll(stopsList.map { it.first })
+                            if (destinationAddress.isNotEmpty()) stopsNameList.add(destinationAddress)
+                            stopsNameList.forEach { stop ->
                                 DropdownMenuItem(
                                     text = { Text(stop) },
                                     onClick = {
@@ -687,11 +727,11 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             expanded = destExpanded,
                             onDismissRequest = { destExpanded = false }
                         ) {
-                            val stopsList = mutableListOf<String>()
-                            if (originAddress.isNotEmpty()) stopsList.add(originAddress)
-                            stopsList.addAll(stops.map { it.first })
-                            if (destinationAddress.isNotEmpty()) stopsList.add(destinationAddress)
-                            stopsList.filter { it != currentStop }.forEach { stop ->
+                            val stopsNameList = mutableListOf<String>()
+                            if (originAddress.isNotEmpty()) stopsNameList.add(originAddress)
+                            stopsNameList.addAll(stopsList.map { it.first })
+                            if (destinationAddress.isNotEmpty()) stopsNameList.add(destinationAddress)
+                            stopsNameList.filter { it != currentStop }.forEach { stop ->
                                 DropdownMenuItem(
                                     text = { Text(stop) },
                                     onClick = {

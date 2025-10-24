@@ -17,6 +17,8 @@ import kotlin.coroutines.suspendCoroutine
 import kotlin.random.Random
 import java.text.SimpleDateFormat
 import java.util.Date
+import com.firebase.geofire.GeoFireUtils
+import com.firebase.geofire.GeoLocation
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -136,6 +138,7 @@ class AuthRepository {
         fitnessCertificate: String,
         taxToken: String,
         stops: List<String>,
+        route: BusRoute,
         fares: Map<String, Map<String, Int>>
     ): Result<Bus> {
         return try {
@@ -148,6 +151,7 @@ class AuthRepository {
                 fitnessCertificate = fitnessCertificate,
                 taxToken = taxToken,
                 stops = stops,
+                route = route,
                 fares = fares,
                 createdAt = System.currentTimeMillis()
             )
@@ -440,6 +444,8 @@ class AuthRepository {
             val pendingRequests = snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Request::class.java)
             }
+            //val geoLocation = GeoLocation(Request?.latitude ?: 0.00 , originLatLng?.longitude ?: 0.00)
+            //originGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
 
             val routeMatching = pendingRequests.filter { req: Request ->
                 val pickupIndex = bus.stops.indexOf(req.pickup)

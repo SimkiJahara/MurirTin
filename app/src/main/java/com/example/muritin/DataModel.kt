@@ -24,8 +24,30 @@ data class Bus(
     val fitnessCertificate: String = "",
     val taxToken: String = "",
     val stops: List<String> = emptyList(),
+    val route: BusRoute? = null,
     val fares: Map<String, Map<String, Int>> = emptyMap(),
     val createdAt: Long = 0L
+)
+
+@Serializable
+data class BusRoute(
+    var originLoc: PointLocation ?= null,
+    var stopPointsLoc: MutableList<PointLocation> = mutableListOf(),
+    var destinationLoc: PointLocation ?= null
+){
+    fun clear() {
+        originLoc = null
+        destinationLoc = null
+        stopPointsLoc.clear()
+    }
+}
+
+@Serializable
+data class PointLocation(
+    var address: String = "",
+    var latitude: Double = 0.00,
+    var longitude: Double = 0.00,
+    var geohash: String = ""
 )
 
 @Serializable
