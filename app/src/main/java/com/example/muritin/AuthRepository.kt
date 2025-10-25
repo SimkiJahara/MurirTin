@@ -446,59 +446,29 @@ class AuthRepository {
             val pendingRequests = snapshot.children.mapNotNull { child: DataSnapshot ->
                 child.getValue(Request::class.java)
             }
-
-//            for (req in pendingRequests) {
-//                var geoLocation = GeoLocation(req.pickupLatLng?.lat ?: , req.pickupLatLng?.lng ?: )
-//                req.pickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-//                geoLocation = GeoLocation(req.destinationLatLng?.lat ?: , req.destinationLatLng?.lng ?: )
-//                req.destinationGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-//            }
+            //Converting rider's pickup and destination point to geohash
             for (req in pendingRequests) {
                 var geoLocation = GeoLocation(
                     req.pickupLatLng?.lat ?: 0.0,
                     req.pickupLatLng?.lng ?: 0.0
                 )
                 req.pickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-
                 geoLocation = GeoLocation(
                     req.destinationLatLng?.lat ?: 0.0,
                     req.destinationLatLng?.lng ?: 0.0
                 )
                 req.destinationGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
             }
-
-            //Collecting all geohashes for this bus
-//            if (bus.route != null) {
-//                if (bus.route.originLoc != null) {
-//                    val originGeohash = bus.route.originLoc.geohash
-//                    if (originGeohash.isNotEmpty()) {
-//                        geoHashesofThisBus.add(originGeohash)
-//                    }
-//                }
-//                if (bus.route.destinationLoc != null) {
-//                    val destGeohash = bus.route.destinationLoc.geohash
-//                    if (destGeohash.isNotEmpty()) {
-//                        geoHashesofThisBus.add(destGeohash)
-//                    }
-//                }
-//                for (point in bus.route.stopPointsLoc) {
-//                    val stopGeohash = point.geohash
-//                    if (stopGeohash.isNotEmpty()) {
-//                        geoHashesofThisBus.add(stopGeohash)
-//                    }
-//                }
-//            }
+            //Collecting geohashes for the assigned bus route
             if (bus.route != null) {
                 bus.route.originLoc?.let { loc ->
                     val originGeohash = loc.geohash
                     if (originGeohash.isNotEmpty()) geoHashesofThisBus.add(originGeohash)
                 }
-
                 bus.route.destinationLoc?.let { loc ->
                     val destGeohash = loc.geohash
                     if (destGeohash.isNotEmpty()) geoHashesofThisBus.add(destGeohash)
                 }
-
                 for (point in bus.route.stopPointsLoc) {
                     val stopGeohash = point.geohash
                     if (stopGeohash.isNotEmpty()) geoHashesofThisBus.add(stopGeohash)
@@ -506,7 +476,7 @@ class AuthRepository {
             }
 
             val routeMatching = pendingRequests.filter { req: Request ->
-                  geoHashesofThisBus.contains(req.pickupGeoHash) && geoHashesofThisBus.contains(req.destinationGeoHash)
+                geoHashesofThisBus.contains(req.pickupGeoHash) && geoHashesofThisBus.contains(req.destinationGeoHash)
             }
 
             val nearbyRequests = routeMatching.filter { req: Request ->
@@ -531,6 +501,62 @@ class AuthRepository {
         }
     }
 
+    suspend fun getLLofPickupDestofBusForRider(requestId: String): List<PointLocation> {
+        try{
+            var snapshot = database.getReference("requests")
+                .child(requestId) // Access the specific requestId node
+                .get()
+                .await()
+            val req = snapshot.getValue(Request::class.java)
+            snapshot = req?.busId?.let {
+                database.getReference("buses")
+                    .child(it)
+            } // Access the specific requestId node
+                ?.get()
+                ?.await()
+            val bus = snapshot.getValue(Bus::class.java)
+
+            //Geohash of rider's choice
+            val riderPickupGH = GeoFireUtils.getGeoHashForLocation(GeoLocation(req?.pickupLatLng?.lat
+                ?: 0.00, req?.pickupLatLng?.lng ?: 0.00), 5)
+            val riderDestGH = GeoFireUtils.getGeoHashForLocation(GeoLocation(req?.destinationLatLng?.lat
+                ?: 0.00, req?.destinationLatLng?.lng ?: 0.00), 5)
+            var pll: PointLocation? = null
+            var dll: PointLocation? = null
+
+            //Getting the points of the bus which is near rider's choice
+            bus?.route?.let { route ->
+                if (route.originLoc?.geohash == riderPickupGH) {
+                    pll = route.originLoc
+                } else if (route.destinationLoc?.geohash == riderPickupGH) {
+                    pll = route.destinationLoc
+                }
+
+                for (stopPoint in route.stopPointsLoc ?: emptyList()) {
+                    if (stopPoint.geohash == riderPickupGH) {
+                        pll = stopPoint
+                        break
+                    }
+                }
+                if (route.originLoc?.geohash == riderDestGH) {
+                    dll = route.originLoc
+                } else if (route.destinationLoc?.geohash == riderDestGH) {
+                    dll = route.destinationLoc
+                }
+                for (stopPoint in route.stopPointsLoc ?: emptyList()) {
+                    if (stopPoint.geohash == riderDestGH) {
+                        dll = stopPoint
+                        break // Found destination location, no need to continue
+                    }
+                }
+            }
+            return listOfNotNull(pll, dll)
+        } catch (e: Exception) {
+                Log.e("AuthRepository", "Get request failed: ${e.message}", e)
+            return emptyList()
+        }
+    }
+
     suspend fun acceptRequest(requestId: String, conductorId: String): Result<Unit> {
         return try {
             val snapshot = database.getReference("requests").child(requestId).get().await()
@@ -549,9 +575,9 @@ class AuthRepository {
             }
             if (activeSchedule == null) throw Exception("No active schedule")
 
-            val pickupIndex = bus.stops.indexOf(req.pickup)
-            val destIndex = bus.stops.indexOf(req.destination)
-            if (pickupIndex == -1 || destIndex == -1 || pickupIndex >= destIndex) throw Exception("Request does not match bus route")
+//            val pickupIndex = bus.stops.indexOf(req.pickup)
+//            val destIndex = bus.stops.indexOf(req.destination)
+//            if (pickupIndex == -1 || destIndex == -1 || pickupIndex >= destIndex) throw Exception("Request does not match bus route")
 
             val otp = generateOTP()
             var updates = mapOf<String, Any?>(

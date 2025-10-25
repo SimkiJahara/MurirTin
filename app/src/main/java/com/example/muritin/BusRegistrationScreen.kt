@@ -192,7 +192,7 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     val geocoder = Geocoder(context)
                                     val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
                                     originAddress = if (addresses != null && addresses.isNotEmpty()) {
-                                        addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or fallback to coordinates
+                                        addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or go back to coordinates
                                     } else {
                                         "লোকেশন পাওয়া যায়নি: $latLngStr"
                                     }
@@ -269,7 +269,7 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     val geocoder = Geocoder(context)
                                     val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
                                     destinationAddress = if (addresses != null && addresses.isNotEmpty()) {
-                                        addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or fallback to coordinates
+                                        addresses[0].getAddressLine(0) ?: latLngStr
                                     } else {
                                         "লোকেশন পাওয়া যায়নি: $latLngStr"
                                     }
@@ -355,7 +355,7 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                     val geocoder = Geocoder(context)
                                     val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
                                     stopAddress = if (addresses != null && addresses.isNotEmpty()) {
-                                        addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or fallback to coordinates
+                                        addresses[0].getAddressLine(0) ?: latLngStr
                                     } else {
                                         "লোকেশন পাওয়া যায়নি: $latLngStr"
                                     }
