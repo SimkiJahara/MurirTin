@@ -73,7 +73,7 @@ data class Request(
     val id: String = "",
     val riderId: String = "",
     val busId: String? = null,
-    val scheduleId: String? = null,  // NEW: Added to tie request to specific schedule
+    val scheduleId: String? = null,
     val pickup: String = "",
     val destination: String = "",
     val pickupLatLng: LatLngData? = null,
@@ -88,7 +88,8 @@ data class Request(
     val preBookDate: String? = null,
     val createdAt: Long = 0L,
     val acceptedBy: String = "",
-    val estimatedTimeToPickup: Int? = null
+    val estimatedTimeToPickup: Int? = null,
+    val acceptedAt: Long = 0L  // NEW: Timestamp when request was accepted
 )
 
 @Serializable
@@ -102,6 +103,13 @@ data class ConductorLocation(
     val conductorId: String = "",
     val lat: Double = 0.0,
     val lng: Double = 0.0,
+    val timestamp: Long = 0L
+)
+
+@Serializable  // NEW: Message model for chat
+data class Message(
+    val senderId: String = "",
+    val text: String = "",
     val timestamp: Long = 0L
 )
 

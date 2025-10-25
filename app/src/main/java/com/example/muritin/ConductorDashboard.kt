@@ -378,38 +378,33 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     ) {
                         items(acceptedRequests) { request ->
                             var rider by remember { mutableStateOf<User?>(null) }
-                            LaunchedEffect(request.riderId) {
+                            var isChatEnabled by remember { mutableStateOf(false) }
+
+                            LaunchedEffect(request.id) {
                                 rider = AuthRepository().getUser(request.riderId).getOrNull()
+                                isChatEnabled = AuthRepository().isChatEnabled(request.id)
                             }
+
                             Card(modifier = Modifier.padding(vertical = 4.dp)) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(
-                                        text = "রাইডার: ${rider?.name ?: "লোড হচ্ছে"} (${rider?.phone ?: "N/A"})",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        text = "পিকআপ: ${request.pickup}",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        text = "গন্তব্য: ${request.destination}",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        text = "সিট: ${request.seats}",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        text = "ভাড়া: ${request.fare}",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        text = "OTP: ${request.otp ?: "N/A"}",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
+                                    Text("রাইডার: ${rider?.name ?: "লোড হচ্ছে"} (${rider?.phone ?: "N/A"})")
+                                    Text("পিকআপ: ${request.pickup}")
+                                    Text("গন্তব্য: ${request.destination}")
+                                    Text("সিট: ${request.seats}")
+                                    Text("ভাড়া: ${request.fare}")
+                                    Text("OTP: ${request.otp ?: "N/A"}")
+
+                                    if (isChatEnabled) {
+                                        Button(onClick = { navController.navigate("chat/${request.id}") }) {
+                                            Text("Chat with Rider")
+                                        }
+                                    } else if (request.status == "Accepted") {
+                                        Text("Chat expired", color = MaterialTheme.colorScheme.error)
+                                    }
                                 }
                             }
                         }
+
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))

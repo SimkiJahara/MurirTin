@@ -8,7 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalContext   // <-- ADD THIS
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseUser
@@ -16,12 +16,10 @@ import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-// Modified MyRequestsScreen.kt (add bus and conductor details display)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
-    val context = LocalContext.current
+    val context = LocalContext.current               // <-- use LocalContext.current
     val scope = rememberCoroutineScope()
     var requests by remember { mutableStateOf<List<Request>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -54,6 +52,16 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
         } else {
             LazyColumn(modifier = Modifier.padding(padding)) {
                 items(requests) { request: Request ->
+                    var bus by remember { mutableStateOf<Bus?>(null) }
+                    var conductor by remember { mutableStateOf<User?>(null) }
+                    var isChatEnabled by remember { mutableStateOf(false) }  // NEW
+                    LaunchedEffect(request.busId, request.conductorId) {
+                        request.busId?.let { busId ->
+                            bus = AuthRepository().getBus(busId)
+                        }
+                        conductor = AuthRepository().getUser(request.conductorId).getOrNull()
+                        isChatEnabled = AuthRepository().isChatEnabled(request.id)  // NEW: Check if chat is allowed
+                    }
                     Card(modifier = Modifier.padding(8.dp)) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("স্ট্যাটাস: ${request.status}")
@@ -61,14 +69,6 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
                             Text("গন্তব্য: ${request.destination}")
                             Text("ভাড়া: ${request.fare} টাকা")
                             if (request.status == "Accepted") {
-                                var bus by remember { mutableStateOf<Bus?>(null) }
-                                var conductor by remember { mutableStateOf<User?>(null) }
-                                LaunchedEffect(request.busId, request.conductorId) {
-                                    request.busId?.let { busId ->
-                                        bus = AuthRepository().getBus(busId)
-                                    }
-                                    conductor = AuthRepository().getUser(request.conductorId).getOrNull()
-                                }
                                 bus?.let {
                                     Text("বাস: ${it.name} (${it.number})")
                                 }
@@ -78,6 +78,13 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
                                 Text("OTP: ${request.otp ?: "N/A"}")
                                 Button(onClick = { navController.navigate("live_tracking/${request.id}") }) {
                                     Text("লাইভ ট্র্যাকিং")
+                                }
+                                if (isChatEnabled) {  // NEW
+                                    Button(onClick = { navController.navigate("chat/${request.id}") }) {
+                                        Text("Chat with Conductor")
+                                    }
+                                } else {
+                                    Text("Chat expired", color = MaterialTheme.colorScheme.error)
                                 }
                             }
                             if (request.status == "Pending") {

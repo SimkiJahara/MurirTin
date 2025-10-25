@@ -1,8 +1,6 @@
 package com.example.muritin
 
 import android.util.Log
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
@@ -449,31 +447,61 @@ class AuthRepository {
                 child.getValue(Request::class.java)
             }
 
+//            for (req in pendingRequests) {
+//                var geoLocation = GeoLocation(req.pickupLatLng?.lat ?: , req.pickupLatLng?.lng ?: )
+//                req.pickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+//                geoLocation = GeoLocation(req.destinationLatLng?.lat ?: , req.destinationLatLng?.lng ?: )
+//                req.destinationGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+//            }
             for (req in pendingRequests) {
-                var geoLocation = GeoLocation(req.pickupLatLng?.lat ?: , req.pickupLatLng?.lng ?: )
+                var geoLocation = GeoLocation(
+                    req.pickupLatLng?.lat ?: 0.0,
+                    req.pickupLatLng?.lng ?: 0.0
+                )
                 req.pickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-                geoLocation = GeoLocation(req.destinationLatLng?.lat ?: , req.destinationLatLng?.lng ?: )
+
+                geoLocation = GeoLocation(
+                    req.destinationLatLng?.lat ?: 0.0,
+                    req.destinationLatLng?.lng ?: 0.0
+                )
                 req.destinationGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
             }
+
             //Collecting all geohashes for this bus
+//            if (bus.route != null) {
+//                if (bus.route.originLoc != null) {
+//                    val originGeohash = bus.route.originLoc.geohash
+//                    if (originGeohash.isNotEmpty()) {
+//                        geoHashesofThisBus.add(originGeohash)
+//                    }
+//                }
+//                if (bus.route.destinationLoc != null) {
+//                    val destGeohash = bus.route.destinationLoc.geohash
+//                    if (destGeohash.isNotEmpty()) {
+//                        geoHashesofThisBus.add(destGeohash)
+//                    }
+//                }
+//                for (point in bus.route.stopPointsLoc) {
+//                    val stopGeohash = point.geohash
+//                    if (stopGeohash.isNotEmpty()) {
+//                        geoHashesofThisBus.add(stopGeohash)
+//                    }
+//                }
+//            }
             if (bus.route != null) {
-                if (bus.route.originLoc != null) {
-                    val originGeohash = bus.route.originLoc.geohash
-                    if (originGeohash.isNotEmpty()) {
-                        geoHashesofThisBus.add(originGeohash)
-                    }
+                bus.route.originLoc?.let { loc ->
+                    val originGeohash = loc.geohash
+                    if (originGeohash.isNotEmpty()) geoHashesofThisBus.add(originGeohash)
                 }
-                if (bus.route.destinationLoc != null) {
-                    val destGeohash = bus.route.destinationLoc.geohash
-                    if (destGeohash.isNotEmpty()) {
-                        geoHashesofThisBus.add(destGeohash)
-                    }
+
+                bus.route.destinationLoc?.let { loc ->
+                    val destGeohash = loc.geohash
+                    if (destGeohash.isNotEmpty()) geoHashesofThisBus.add(destGeohash)
                 }
+
                 for (point in bus.route.stopPointsLoc) {
                     val stopGeohash = point.geohash
-                    if (stopGeohash.isNotEmpty()) {
-                        geoHashesofThisBus.add(stopGeohash)
-                    }
+                    if (stopGeohash.isNotEmpty()) geoHashesofThisBus.add(stopGeohash)
                 }
             }
 
@@ -532,7 +560,8 @@ class AuthRepository {
                 "otp" to otp,
                 "acceptedBy" to conductorId,
                 "busId" to busId,
-                "scheduleId" to activeSchedule.scheduleId
+                "scheduleId" to activeSchedule.scheduleId,
+                "acceptedAt" to System.currentTimeMillis()
             )
 
             val customBaseFare = bus.fares[req.pickup]?.get(req.destination)
@@ -600,17 +629,17 @@ class AuthRepository {
         }
     }
 
-    private suspend fun getAllBuses(): List<Bus> {
-        return try {
-            val snapshot = database.getReference("buses").get().await()
-            snapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Bus::class.java)
-            }
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get all buses failed: ${e.message}", e)
-            emptyList()
-        }
-    }
+//    private suspend fun getAllBuses(): List<Bus> {
+//        return try {
+//            val snapshot = database.getReference("buses").get().await()
+//            snapshot.children.mapNotNull { child: DataSnapshot ->
+//                child.getValue(Bus::class.java)
+//            }
+//        } catch (e: Exception) {
+//            Log.e("AuthRepository", "Get all buses failed: ${e.message}", e)
+//            emptyList()
+//        }
+//    }
 
     suspend fun debugSaveTestData() {
         try {
@@ -635,14 +664,14 @@ class AuthRepository {
         return Random.nextInt(1000, 9999).toString()
     }
 
-    suspend fun fixUserRole(uid: String) {
-        try {
-            database.getReference("users").child(uid).child("role").setValue("Owner").await()
-            Log.d("AuthRepository", "User role updated to Owner for UID: $uid")
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Failed to update user role: ${e.message}", e)
-        }
-    }
+//    suspend fun fixUserRole(uid: String) {
+//        try {
+//            database.getReference("users").child(uid).child("role").setValue("Owner").await()
+//            Log.d("AuthRepository", "User role updated to Owner for UID: $uid")
+//        } catch (e: Exception) {
+//            Log.e("AuthRepository", "Failed to update user role: ${e.message}", e)
+//        }
+//    }
 
     suspend fun ensureOwnerRole(uid: String) {
         try {
@@ -707,6 +736,54 @@ class AuthRepository {
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get schedule failed: ${e.message}", e)
             null
+        }
+    }
+
+    suspend fun sendMessage(requestId: String, text: String): Result<Unit> {
+        return try {
+            val currentUid = auth.currentUser?.uid ?: throw Exception("No user logged in")
+            val messageId = database.getReference("messages").child(requestId).child("messages").push().key ?: throw Exception("Failed to generate messageId")
+            val message = Message(
+                senderId = currentUid,
+                text = text,
+                timestamp = System.currentTimeMillis()
+            )
+            database.getReference("messages").child(requestId).child("messages").child(messageId).setValue(message).await()
+            Log.d("AuthRepository", "Message sent for request $requestId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Send message failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    fun listenToMessages(requestId: String, onMessagesChanged: (List<Message>) -> Unit) {
+        database.getReference("messages").child(requestId).child("messages")
+            .orderByChild("timestamp")
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+                    onMessagesChanged(messages)
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("AuthRepository", "Listen to messages cancelled: ${error.message}")
+                }
+            })
+    }
+
+    suspend fun isChatEnabled(requestId: String): Boolean {
+        return try {
+            val snapshot = database.getReference("requests").child(requestId).get().await()
+            val request = snapshot.getValue(Request::class.java) ?: return false
+            if (request.status != "Accepted" || request.scheduleId == null) return false
+            val scheduleSnapshot = database.getReference("schedules").child(request.scheduleId).get().await()
+            val schedule = scheduleSnapshot.getValue(Schedule::class.java) ?: return false
+            val currentTime = System.currentTimeMillis()
+            currentTime <= schedule.endTime + 432000000L  // 5 days after endTime
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Check chat enabled failed: ${e.message}", e)
+            false
         }
     }
 }

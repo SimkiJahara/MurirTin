@@ -285,6 +285,24 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+        composable("chat/{requestId}") { backStackEntry ->
+            val requestId = backStackEntry.arguments?.getString("requestId") ?: ""
+            Log.d("AppNavHost", "Opening ChatScreen for requestId = $requestId")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ChatScreen(
+                    navController = navController,
+                    requestId = requestId,
+                    user = user
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
     }
 }
 
