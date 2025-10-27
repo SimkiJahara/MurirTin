@@ -56,6 +56,11 @@ class AuthRepository {
             )
             database.getReference("users").child(firebaseUser.uid).setValue(user).await()
             Log.d("AuthRepository", "User data saved to database: $role")
+            firebaseUser.sendEmailVerification().await()
+            Log.d("AuthRepository", "Verification email sent to $email")
+            if (ownerPassword == null) {
+                auth.signOut()
+            }
             if (role == "Conductor" && currentUser != null) {
                 val email = currentUser.email ?: throw Exception("Owner email is null")
                 val ownerCredential = EmailAuthProvider.getCredential(email, ownerPassword!!)
@@ -73,6 +78,10 @@ class AuthRepository {
         return try {
             val result = auth.signInWithEmailAndPassword(email, password).await()
             val firebaseUser = result.user ?: throw Exception("Login failed")
+            if (!firebaseUser.isEmailVerified) {
+                auth.signOut()
+                throw Exception("আপনার ইমেইল যাচাই করা হয়নি। দয়া করে আপনার ইমেইল চেক করুন এবং যাচাই লিঙ্কে ক্লিক করুন।")
+            }
             val snapshot = database.getReference("users").child(firebaseUser.uid).get().await()
             val user = snapshot.getValue(User::class.java) ?: throw Exception("User data not found")
             Result.success(user)
@@ -552,7 +561,7 @@ class AuthRepository {
             }
             return listOfNotNull(pll, dll)
         } catch (e: Exception) {
-                Log.e("AuthRepository", "Get request failed: ${e.message}", e)
+            Log.e("AuthRepository", "Get request failed: ${e.message}", e)
             return emptyList()
         }
     }

@@ -98,8 +98,8 @@ fun AppNavHost(navController: NavHostController) {
             SignUpScreen(
                 navController = navController,
                 onSignUpSuccess = { user ->
-                    Log.d("AppNavHost", "Signup success, navigating to user_dashboard")
-                    navController.navigate("user_dashboard") {
+                    Log.d("AppNavHost", "Signup success, navigating to login")
+                    navController.navigate("login") {
                         popUpTo("signup") { inclusive = true }
                     }
                 }
