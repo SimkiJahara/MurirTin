@@ -26,7 +26,8 @@ data class Bus(
     val stops: List<String> = emptyList(),
     val route: BusRoute? = null,
     val fares: Map<String, Map<String, Int>> = emptyMap(),
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    val licenseDocumentUrl: String = ""  // NEW FIELD
 )
 
 @Serializable
