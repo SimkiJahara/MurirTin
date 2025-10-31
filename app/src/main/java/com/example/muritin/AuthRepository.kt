@@ -148,8 +148,7 @@ class AuthRepository {
         taxToken: String,
         stops: List<String>,
         route: BusRoute,
-        fares: Map<String, Map<String, Int>>,
-        licenseDocumentUrl: String  // NEW PARAM
+        fares: Map<String, Map<String, Int>>
     ): Result<Bus> {
         return try {
             val busId = database.getReference("buses").push().key ?: throw Exception("Failed to generate busId")
@@ -163,15 +162,12 @@ class AuthRepository {
                 stops = stops,
                 route = route,
                 fares = fares,
-                createdAt = System.currentTimeMillis(),
-                licenseDocumentUrl = licenseDocumentUrl  // SAVE URL
+                createdAt = System.currentTimeMillis()
+                // licenseDocumentUrl removed
             )
-            Log.d("AuthRepository", "Attempting to register bus: $bus")
             database.getReference("buses").child(busId).setValue(bus).await()
-            Log.d("AuthRepository", "Bus registered: $busId for owner: $ownerId")
             Result.success(bus)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Bus registration failed: ${e.message}", e)
             Result.failure(e)
         }
     }
