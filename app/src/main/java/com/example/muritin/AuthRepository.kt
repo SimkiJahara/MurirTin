@@ -632,12 +632,23 @@ class AuthRepository {
 
     suspend fun acceptRequest(requestId: String, conductorId: String): Result<Unit> {
         return try {
-            val snapshot = database.getReference("requests").child(conductorId).get().await()
-            val req = snapshot.getValue(Request::class.java) ?: throw Exception("Request not found")
-            if (req.status != "Pending") throw Exception("Request not pending")
+            // Fetch the request from correct path
+            val snapshot = database.getReference("requests")
+                .child(conductorId)
+                .child(requestId)
+                .get()
+                .await()
 
-            val busId = getBusForConductor(conductorId) ?: throw Exception("No bus assigned")
-            val bus = getBus(busId) ?: throw Exception("Bus not found")
+            val req = snapshot.getValue(Request::class.java)
+                ?: throw Exception("Request not found")
+
+            if (req.status != "Pending")
+                throw Exception("Request not pending")
+
+            val busId = getBusForConductor(conductorId)
+                ?: throw Exception("No bus assigned")
+            val bus = getBus(busId)
+                ?: throw Exception("Bus not found")
 
             val schedules = getSchedulesForConductor(conductorId)
             val currentTime = System.currentTimeMillis()
@@ -645,35 +656,34 @@ class AuthRepository {
             val currentDate = dateFormat.format(Date(currentTime))
             val activeSchedule = schedules.firstOrNull {
                 it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
-            }
-            if (activeSchedule == null) throw Exception("No active schedule")
-
-//            val pickupIndex = bus.stops.indexOf(req.pickup)
-//            val destIndex = bus.stops.indexOf(req.destination)
-//            if (pickupIndex == -1 || destIndex == -1 || pickupIndex >= destIndex) throw Exception("Request does not match bus route")
+            } ?: throw Exception("No active schedule")
 
             val otp = generateOTP()
-            var updates = mapOf<String, Any?>(
+            val updates = mapOf<String, Any?>(
                 "status" to "Accepted",
-                "conductorId" to conductorId,
                 "otp" to otp,
                 "acceptedBy" to conductorId,
                 "busId" to busId,
                 "scheduleId" to activeSchedule.scheduleId,
                 "acceptedAt" to System.currentTimeMillis()
-            )
-
-            val customBaseFare = bus.fares[req.pickup]?.get(req.destination)
-            if (customBaseFare != null) {
-                val totalFare = customBaseFare * req.seats
-                updates = updates + ("fare" to totalFare)
+            ).let { map ->
+                val customFare = bus.fares[req.pickup]?.get(req.destination)
+                if (customFare != null) {
+                    map + ("fare" to customFare * req.seats)
+                } else map
             }
 
-            database.getReference("requests").child(requestId).updateChildren(updates).await()
-            Log.d("AuthRepository", "Request accepted with OTP: $otp for bus: $busId")
+            // UPDATE THE CORRECT PATH
+            database.getReference("requests")
+                .child(conductorId)
+                .child(requestId)
+                .updateChildren(updates)
+                .await()
+
+            Log.d("AuthRepository", "Request accepted: $requestId")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Accept request failed: ${e.message}", e)
+            Log.e("AuthRepository", "Accept failed: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -833,21 +843,21 @@ class AuthRepository {
 
     suspend fun getAcceptedRequestsForConductor(conductorId: String): List<Request> {
         return try {
-            val currentTime = System.currentTimeMillis()
             val snapshot = database.getReference("requests")
-                .orderByChild("acceptedBy")
-                .equalTo(conductorId)
-                .get().await()
-            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Request::class.java)
+                .child(conductorId)  // Only this conductor's requests
+                .get()
+                .await()
+
+            val requests = snapshot.children.mapNotNull {
+                it.getValue(Request::class.java)
             }
+
             requests.filter { request ->
-                if (request.scheduleId != null) {
-                    val schedule = getSchedule(request.scheduleId) ?: return@filter false
-                    schedule.endTime >= currentTime
-                } else {
-                    true
-                }
+                request.status == "Accepted" &&
+                        request.scheduleId != null &&
+                        getSchedule(request.scheduleId)?.let { schedule ->
+                            schedule.endTime >= System.currentTimeMillis()
+                        } == true
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get accepted requests failed: ${e.message}", e)
