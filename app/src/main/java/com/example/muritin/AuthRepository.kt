@@ -148,6 +148,7 @@ class AuthRepository {
         taxToken: String,
         stops: List<String>,
         route: BusRoute,
+        polylineString: String,
         fares: Map<String, Map<String, Int>>
     ): Result<Bus> {
         return try {
@@ -160,12 +161,34 @@ class AuthRepository {
                 fitnessCertificate = fitnessCertificate,
                 taxToken = taxToken,
                 stops = stops,
-                route = route,
                 fares = fares,
                 createdAt = System.currentTimeMillis()
                 // licenseDocumentUrl removed
             )
+            val routeId1 = database.getReference("busRoutes").push().key ?: throw Exception("Failed to generate routeId")
+            val routeDetails = RouteDetails(
+                routeId = routeId1,
+                busId = busId,
+                status = "Going",
+                busRouteObject = route,
+                polylineString = polylineString
+            )
+            val routeId2 = database.getReference("busRoutes").push().key ?: throw Exception("Failed to generate routeId")
+            val reverseBusRoute = BusRoute(
+                originLoc = route.destinationLoc,
+                stopPointsLoc = route.stopPointsLoc.reversed() as MutableList<PointLocation>,
+                destinationLoc = route.originLoc
+            )
+            val reverseRouteDetails = RouteDetails(
+                routeId = routeId2,
+                busId = busId,
+                status = "Coming",
+                busRouteObject = reverseBusRoute,
+                polylineString = polylineString
+            )
             database.getReference("buses").child(busId).setValue(bus).await()
+            database.getReference("busRoutes").child(routeId1).setValue(routeDetails).await()
+            database.getReference("busRoutes").child(routeId2).setValue(reverseRouteDetails).await()
             Result.success(bus)
         } catch (e: Exception) {
             Result.failure(e)
@@ -285,6 +308,7 @@ class AuthRepository {
 
     suspend fun createSchedule(
         busId: String,
+        routeId: String,
         conductorId: String,
         startTime: Long,
         endTime: Long,
@@ -300,6 +324,7 @@ class AuthRepository {
             val schedule = Schedule(
                 scheduleId = scheduleId,
                 busId = busId,
+                routeId = routeId,
                 conductorId = conductorId,
                 startTime = startTime,
                 endTime = endTime,
@@ -373,9 +398,95 @@ class AuthRepository {
         }
     }
 
+    suspend fun findNearbyPickupStations(
+        riderPickUpLatLng: LatLng,
+        riderDestLatLng: LatLng,
+    ): MutableList<Pair<PointLocation, String>> {
+        var riderChosenPickupGeoHash = ""
+        var riderChosenDestGeoHash = ""
+
+        //Converting rider's pickup and destination point to geohash
+        var geoLocation = GeoLocation(
+            riderPickUpLatLng.latitude?: 0.0,
+            riderPickUpLatLng.longitude ?: 0.0
+        )
+        riderChosenPickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+        geoLocation = GeoLocation(
+            riderDestLatLng.latitude?: 0.0,
+            riderDestLatLng.longitude?: 0.0
+        )
+        riderChosenDestGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
+
+        //Collecting routeIds for matching geohashes with rider's choice
+        val snapshot = database.getReference("busRoutes").get().await()
+        var matchedStationsList: MutableList<Pair<PointLocation, String>> = mutableListOf()
+
+        for (child in snapshot.children) {
+            val route = child.getValue(RouteDetails::class.java) ?: continue
+            val busRoute = route.busRouteObject ?: continue
+            val stops = busRoute.stopPointsLoc ?: emptyList()
+            val origin = busRoute.originLoc?.geohash
+            val destination = busRoute.destinationLoc?.geohash
+
+            var found = false
+
+            // When Pickup is origin
+            if (origin == riderChosenPickupGeoHash) {
+                // Search all stops + destination
+                for (stopindex in stops) {
+                    if (stopindex.geohash == riderChosenDestGeoHash) {
+                        found = true
+                        break
+                    }
+                }
+                if (!found && destination == riderChosenDestGeoHash) {
+                    found = true
+                }
+                if(found) {
+                    matchedStationsList.add(
+                        Pair(
+                            busRoute.originLoc,
+                            route.routeId
+                        ) as Pair<PointLocation, String>
+                    )
+                }
+            }
+            // When Pickup is in stopage points
+            else {
+                for (i in stops.indices) {
+                    if (stops[i].geohash == riderChosenPickupGeoHash) {
+                        // Found pickup at stop index i
+                        // Now search from i+1 to end, and destination
+                        for (j in i + 1 until stops.size) {
+                            if (stops[j].geohash == riderChosenDestGeoHash) {
+                                found = true
+                                break
+                            }
+                        }
+                        if (!found && destination == riderChosenDestGeoHash) {
+                            found = true
+                            break
+                        }
+                        if(found){
+                            matchedStationsList.add(
+                                Pair(
+                                    stops[i],
+                                    route.routeId
+                                ) as Pair<PointLocation, String>
+                            )
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        return matchedStationsList
+    }
+
     suspend fun submitTripRequest(
         riderId: String,
         pickup: String,
+        routeId: String,
         destination: String,
         seats: Int,
         pickupLatLng: LatLng,
@@ -399,10 +510,26 @@ class AuthRepository {
 
             val totalFare = fare * seats
 
+            //Getting the conductorId for this route
+            val busId = database.getReference("busRoutes")
+                .child(routeId)
+                .child("busId")
+                .get()
+                .await()
+                .getValue(String::class.java)
+            val conductorId =  database.getReference("busAssignments")
+                .child(busId.toString())
+                .child("conductorId")
+                .get()
+                .await()
+                .getValue(String::class.java)
+
             val requestId = database.getReference("requests").push().key ?: throw Exception("Failed to generate requestId")
             val request = Request(
                 id = requestId,
                 riderId = riderId,
+                conductorId = conductorId!!,
+                routeId = routeId,
                 busId = busId,
                 pickup = pickup,
                 destination = destination,
@@ -413,7 +540,7 @@ class AuthRepository {
                 status = "Pending",
                 createdAt = System.currentTimeMillis()
             )
-            database.getReference("requests").child(requestId).setValue(request).await()
+            database.getReference("requests").child(conductorId).child(requestId).setValue(request).await()
             Log.d("AuthRepository", "Trip request submitted: $requestId")
             Result.success(request)
         } catch (e: Exception) {
@@ -435,138 +562,77 @@ class AuthRepository {
             val currentTime = System.currentTimeMillis()
             val dateFormat = SimpleDateFormat("yyyy-MM-dd")
             val currentDate = dateFormat.format(Date(currentTime))
-            val geoHashesofThisBus: MutableList<String> = mutableListOf()
 
-            val activeSchedule = schedules.firstOrNull {
-                it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
-            }
-            if (activeSchedule == null) {
-                Log.d("AuthRepository", "No active schedule for conductor $conductorId on $currentDate")
-                return emptyList()
-            }
+            val snapshot = database.getReference("requests").child(conductorId).get().await()
+            val allRequests = snapshot.children.mapNotNull { it.getValue(Request::class.java) }
+            val pendingRequests = allRequests.filter { it.status == "Pending" }
 
-            val snapshot = database.getReference("requests")
-                .orderByChild("status")
-                .equalTo("Pending")
-                .get()
-                .await()
-            val pendingRequests = snapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Request::class.java)
-            }
-            //Converting rider's pickup and destination point to geohash
-            for (req in pendingRequests) {
-                var geoLocation = GeoLocation(
-                    req.pickupLatLng?.lat ?: 0.0,
-                    req.pickupLatLng?.lng ?: 0.0
-                )
-                req.pickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-                geoLocation = GeoLocation(
-                    req.destinationLatLng?.lat ?: 0.0,
-                    req.destinationLatLng?.lng ?: 0.0
-                )
-                req.destinationGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-            }
-            //Collecting geohashes for the assigned bus route
-            if (bus.route != null) {
-                bus.route.originLoc?.let { loc ->
-                    val originGeohash = loc.geohash
-                    if (originGeohash.isNotEmpty()) geoHashesofThisBus.add(originGeohash)
-                }
-                bus.route.destinationLoc?.let { loc ->
-                    val destGeohash = loc.geohash
-                    if (destGeohash.isNotEmpty()) geoHashesofThisBus.add(destGeohash)
-                }
-                for (point in bus.route.stopPointsLoc) {
-                    val stopGeohash = point.geohash
-                    if (stopGeohash.isNotEmpty()) geoHashesofThisBus.add(stopGeohash)
-                }
-            }
-
-            val routeMatching = pendingRequests.filter { req: Request ->
-                geoHashesofThisBus.contains(req.pickupGeoHash) && geoHashesofThisBus.contains(req.destinationGeoHash)
-            }
-
-            val nearbyRequests = routeMatching.filter { req: Request ->
-                val pickupLatLng = LatLng(req.pickupLatLng!!.lat, req.pickupLatLng.lng)
-                val originStr = "${currentLocation.latitude},${currentLocation.longitude}"
-                val destStr = "${pickupLatLng.latitude},${pickupLatLng.longitude}"
-                val response = withContext(Dispatchers.IO) {
-                    directionsApi.getRoute(originStr, destStr, null, apiKey)
-                }
-                if (response.status == "OK" && response.routes.isNotEmpty()) {
-                    val duration = response.routes[0].legs[0].duration.value
-                    (duration / 60) <= 30
-                } else {
-                    false
-                }
-            }
-            Log.d("AuthRepository", "Fetched ${nearbyRequests.size} pending requests for bus $busId")
-            nearbyRequests
+            return pendingRequests
         } catch (e: Exception) {
             Log.e("AuthRepository", "Get pending requests failed: ${e.message}", e)
             emptyList()
         }
     }
 
-    suspend fun getLLofPickupDestofBusForRider(requestId: String): List<PointLocation> {
-        try{
-            var snapshot = database.getReference("requests")
-                .child(requestId) // Access the specific requestId node
-                .get()
-                .await()
-            val req = snapshot.getValue(Request::class.java)
-            snapshot = req?.busId?.let {
-                database.getReference("buses")
-                    .child(it)
-            } // Access the specific requestId node
-                ?.get()
-                ?.await()
-            val bus = snapshot.getValue(Bus::class.java)
-
-            //Geohash of rider's choice
-            val riderPickupGH = GeoFireUtils.getGeoHashForLocation(GeoLocation(req?.pickupLatLng?.lat
-                ?: 0.00, req?.pickupLatLng?.lng ?: 0.00), 5)
-            val riderDestGH = GeoFireUtils.getGeoHashForLocation(GeoLocation(req?.destinationLatLng?.lat
-                ?: 0.00, req?.destinationLatLng?.lng ?: 0.00), 5)
-            var pll: PointLocation? = null
-            var dll: PointLocation? = null
-
-            //Getting the points of the bus which is near rider's choice
-            bus?.route?.let { route ->
-                if (route.originLoc?.geohash == riderPickupGH) {
-                    pll = route.originLoc
-                } else if (route.destinationLoc?.geohash == riderPickupGH) {
-                    pll = route.destinationLoc
-                }
-
-                for (stopPoint in route.stopPointsLoc ?: emptyList()) {
-                    if (stopPoint.geohash == riderPickupGH) {
-                        pll = stopPoint
-                        break
-                    }
-                }
-                if (route.originLoc?.geohash == riderDestGH) {
-                    dll = route.originLoc
-                } else if (route.destinationLoc?.geohash == riderDestGH) {
-                    dll = route.destinationLoc
-                }
-                for (stopPoint in route.stopPointsLoc ?: emptyList()) {
-                    if (stopPoint.geohash == riderDestGH) {
-                        dll = stopPoint
-                        break // Found destination location, no need to continue
-                    }
-                }
-            }
-            return listOfNotNull(pll, dll)
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get request failed: ${e.message}", e)
-            return emptyList()
-        }
-    }
+//    suspend fun getLLofPickupDestofBusForRider(requestId: String): List<PointLocation> {
+//        try{
+//            var snapshot = database.getReference("requests")
+//                .child(requestId) // Access the specific requestId node
+//                .get()
+//                .await()
+//            val req = snapshot.getValue(Request::class.java)
+//            snapshot = req?.busId?.let {
+//                database.getReference("buses")
+//                    .child(it)
+//            } // Access the specific requestId node
+//                ?.get()
+//                ?.await()
+//            val bus = snapshot.getValue(Bus::class.java)
+//
+//            //Geohash of rider's choice
+//            val riderPickupGH = GeoFireUtils.getGeoHashForLocation(GeoLocation(req?.pickupLatLng?.lat
+//                ?: 0.00, req?.pickupLatLng?.lng ?: 0.00), 5)
+//            val riderDestGH = GeoFireUtils.getGeoHashForLocation(GeoLocation(req?.destinationLatLng?.lat
+//                ?: 0.00, req?.destinationLatLng?.lng ?: 0.00), 5)
+//            var pll: PointLocation? = null
+//            var dll: PointLocation? = null
+//
+//            //Getting the points of the bus which is near rider's choice
+//            bus?.route?.let { route ->
+//                if (route.originLoc?.geohash == riderPickupGH) {
+//                    pll = route.originLoc
+//                } else if (route.destinationLoc?.geohash == riderPickupGH) {
+//                    pll = route.destinationLoc
+//                }
+//
+//                for (stopPoint in route.stopPointsLoc ?: emptyList()) {
+//                    if (stopPoint.geohash == riderPickupGH) {
+//                        pll = stopPoint
+//                        break
+//                    }
+//                }
+//                if (route.originLoc?.geohash == riderDestGH) {
+//                    dll = route.originLoc
+//                } else if (route.destinationLoc?.geohash == riderDestGH) {
+//                    dll = route.destinationLoc
+//                }
+//                for (stopPoint in route.stopPointsLoc ?: emptyList()) {
+//                    if (stopPoint.geohash == riderDestGH) {
+//                        dll = stopPoint
+//                        break // Found destination location, no need to continue
+//                    }
+//                }
+//            }
+//            return listOfNotNull(pll, dll)
+//        } catch (e: Exception) {
+//            Log.e("AuthRepository", "Get request failed: ${e.message}", e)
+//            return emptyList()
+//        }
+//    }
 
     suspend fun acceptRequest(requestId: String, conductorId: String): Result<Unit> {
         return try {
-            val snapshot = database.getReference("requests").child(requestId).get().await()
+            val snapshot = database.getReference("requests").child(conductorId).get().await()
             val req = snapshot.getValue(Request::class.java) ?: throw Exception("Request not found")
             if (req.status != "Pending") throw Exception("Request not pending")
 
@@ -612,29 +678,56 @@ class AuthRepository {
         }
     }
 
-    suspend fun getRequestsForUser(userId: String): List<Request> {
-        return try {
-            val currentTime = System.currentTimeMillis()
-            val snapshot = database.getReference("requests")
-                .orderByChild("riderId")
-                .equalTo(userId)
-                .get().await()
-            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Request::class.java)
-            }
-            requests.filter { request ->
-                if (request.status == "Accepted" && request.scheduleId != null) {
-                    val schedule = getSchedule(request.scheduleId) ?: return@filter false
-                    schedule.endTime >= currentTime
-                } else {
-                    true
+    suspend fun getRequestsForUser(userId: String): List<Request> = runCatching {
+        val currentTime = System.currentTimeMillis()
+        val allRequestsSnapshot = database.getReference("requests").get().await()
+        val userRequests = mutableListOf<Request>()
+
+        allRequestsSnapshot.children.forEach { conductorSnapshot -> // each conductor
+            conductorSnapshot.children.forEach { requestSnapshot -> // each request
+                val request = requestSnapshot.getValue(Request::class.java) ?: return@forEach
+                if (request.riderId == userId) {
+                    userRequests.add(request)
                 }
             }
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
-            emptyList()
         }
+
+        userRequests.filter { request ->
+            if (request.status.equals("Accepted", ignoreCase = true) && request.scheduleId != null) {
+                val schedule = getSchedule(request.scheduleId) ?: return@filter false
+                schedule.endTime >= currentTime
+            } else {
+                true
+            }
+        }
+
+    }.getOrElse { e ->
+        Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
+        emptyList()
     }
+//    suspend fun getRequestsForUser(userId: String): List<Request> {
+//        return try {
+//            val currentTime = System.currentTimeMillis()
+//            val snapshot = database.getReference("requests")
+//                .orderByChild("riderId")
+//                .equalTo(userId)
+//                .get().await()
+//            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
+//                child.getValue(Request::class.java)
+//            }
+//            requests.filter { request ->
+//                if (request.status == "Accepted" && request.scheduleId != null) {
+//                    val schedule = getSchedule(request.scheduleId) ?: return@filter false
+//                    schedule.endTime >= currentTime
+//                } else {
+//                    true
+//                }
+//            }
+//        } catch (e: Exception) {
+//            Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
+//            emptyList()
+//        }
+//    }
 
     suspend fun updateConductorLocation(conductorId: String, location: LatLng): Result<Unit> {
         return try {

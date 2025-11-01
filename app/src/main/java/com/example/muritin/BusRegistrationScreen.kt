@@ -140,7 +140,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                     OutlinedTextField(
                         value = number,
                         onValueChange = { number = it },
-                        label = { Text("বাস নম্বর") },
+                        label = { Text("বাসের লাইসেন্স নম্বর") },
+                        placeholder = {Text("GHA-11-1111")},
                         modifier = Modifier.fillMaxWidth(),
                         isError = error != null && number.isBlank()
                     )
@@ -148,7 +149,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                     OutlinedTextField(
                         value = fitnessCertificate,
                         onValueChange = { fitnessCertificate = it },
-                        label = { Text("ফিটনেস সার্টিফিকেট") },
+                        label = { Text("ফিটনেস সার্টিফিকেট এর সনদ নম্বর") },
+                        placeholder = {Text("11-22222455/25")},
                         modifier = Modifier.fillMaxWidth(),
                         isError = error != null && fitnessCertificate.isBlank()
                     )
@@ -156,7 +158,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                     OutlinedTextField(
                         value = taxToken,
                         onValueChange = { taxToken = it },
-                        label = { Text("ট্যাক্স টোকেন") },
+                        label = { Text("ট্যাক্স টোকেন নম্বর") },
+                        placeholder = {Text("22222222222")},
                         modifier = Modifier.fillMaxWidth(),
                         isError = error != null && taxToken.isBlank()
                     )
@@ -627,6 +630,7 @@ fun BusRegistrationScreen(navController: NavHostController) {
                                             taxToken = taxToken,
                                             stops = stopsNameList,
                                             route = BusRouteObject,
+                                            polylineString = returned_points_from_directionapi,
                                             fares = fares
                                         )
                                         isLoading = false

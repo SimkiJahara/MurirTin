@@ -44,25 +44,25 @@ fun LiveTrackingScreen(navController: NavHostController, user: FirebaseUser, req
     var isLoading by remember { mutableStateOf(true) }
     val pickAndDestLLofBus = remember { mutableStateListOf<PointLocation>() }
 
-    LaunchedEffect(requestId) {
-        try {
-            val allRequests = AuthRepository().getRequestsForUser(user.uid)
-            request = allRequests.find { it.id == requestId }
-            request?.conductorId?.let { conductorId ->
-                conductorLocation = AuthRepository().getConductorLocation(conductorId)
-            }
-            isLoading = false
-        } catch (e: Exception) {
-            isLoading = false
-            Log.e("LiveTrackingScreen", "Error: ${e.message}")
-        }
-    }
+//    LaunchedEffect(requestId) {
+//        try {
+//            val allRequests = AuthRepository().getRequestsForUser(user.uid)
+//            request = allRequests.find { it.id == requestId }
+//            request?.conductorId?.let { conductorId ->
+//                conductorLocation = AuthRepository().getConductorLocation(conductorId)
+//            }
+//            isLoading = false
+//        } catch (e: Exception) {
+//            isLoading = false
+//            Log.e("LiveTrackingScreen", "Error: ${e.message}")
+//        }
+//    }
 
     LaunchedEffect (Unit) {
         scope.launch {
-            val busLoc = AuthRepository().getLLofPickupDestofBusForRider(requestId)
-            pickAndDestLLofBus.clear()
-            pickAndDestLLofBus.addAll(busLoc)
+//            val busLoc = AuthRepository().getLLofPickupDestofBusForRider(requestId)
+//            pickAndDestLLofBus.clear()
+//            pickAndDestLLofBus.addAll(busLoc)
         }
     }
 

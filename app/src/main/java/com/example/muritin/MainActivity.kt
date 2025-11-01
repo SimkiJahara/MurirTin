@@ -242,6 +242,9 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+        composable("create_schedule_conductor") {
+            Create_Schedule_Of_Bus(navController = navController)
+        }
         composable("trip_request") {
             Log.d("AppNavHost", "Navigating to TripRequestScreen")
             val user = FirebaseAuth.getInstance().currentUser

@@ -24,9 +24,17 @@ data class Bus(
     val fitnessCertificate: String = "",
     val taxToken: String = "",
     val stops: List<String> = emptyList(),
-    val route: BusRoute? = null,
     val fares: Map<String, Map<String, Int>> = emptyMap(),
     val createdAt: Long = 0L
+)
+
+@Serializable
+data class RouteDetails(
+    val routeId: String = "",
+    val busId: String = "",
+    val status: String = "",
+    val busRouteObject: BusRoute ?= null,
+    val polylineString: String = ""
 )
 
 @Serializable
@@ -61,6 +69,7 @@ data class BusAssignment(
 data class Schedule(
     val scheduleId: String = "",
     val busId: String = "",
+    val routeId: String = "",
     val conductorId: String = "",
     val startTime: Long = 0L,
     val endTime: Long = 0L,
@@ -74,6 +83,7 @@ data class Request(
     val riderId: String = "",
     val busId: String? = null,
     val scheduleId: String? = null,
+    val routeId: String?= null,
     val pickup: String = "",
     val destination: String = "",
     val pickupLatLng: LatLngData? = null,

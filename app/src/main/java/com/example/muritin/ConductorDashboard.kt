@@ -16,6 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavHostController
@@ -182,12 +184,6 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     modifier = Modifier.padding(8.dp),
                     style = MaterialTheme.typography.headlineMedium
                 )
-                Text(
-                    text = "স্বাগতম, ${user.email}",
-                    modifier = Modifier.padding(8.dp),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(modifier = Modifier.height(24.dp))
                 if (assignedBus != null) {
                     Card(
                         modifier = Modifier
@@ -197,11 +193,18 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                text = "অ্যাসাইনড বাস: ${assignedBus!!.name}",
+                                text = "বাস এর তথ্য",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = "আমার বাস: ${assignedBus!!.name}",
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                text = "নম্বর: ${assignedBus!!.number}",
+                                text = "লাইসেন্স নম্বর: ${assignedBus!!.number}",
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
@@ -210,7 +213,8 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                             )
                             Text(
                                 text = "ভাড়া তালিকা:",
-                                style = MaterialTheme.typography.bodyLarge
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
                             )
                             assignedBus!!.fares.forEach { (stop, dests) ->
                                 dests.forEach { (dest, fare) ->
@@ -223,11 +227,38 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                         }
                     }
                 } else {
-                    Text(
-                        text = "কোনো বাস অ্যাসাইন করা হয়নি",
-                        modifier = Modifier.padding(8.dp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "কোনো বাস নেই",
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = {navController.navigate("create_schedule_conductor")},
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = assignedBus != null
+                ) {
+                    Text("শিডিউল তৈরি করুন")
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        //navController.navigate("show_account_info")
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("রাইডার এর রিকোয়েস্টসমুহ")
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
@@ -238,14 +269,6 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("অ্যাকাউন্ট এর তথ্য")
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = { showScheduleDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = assignedBus != null
-                ) {
-                    Text("শিডিউল তৈরি করুন")
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -440,109 +463,5 @@ fun ConductorDashboard(navController: NavHostController, user: FirebaseUser, onL
                 }
             }
         }
-    }
-
-    if (showScheduleDialog && assignedBus != null) {
-        AlertDialog(
-            onDismissRequest = { showScheduleDialog = false },
-            title = { Text("শিডিউল তৈরি করুন") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = selectedDate,
-                        onValueChange = { selectedDate = it },
-                        label = { Text("তারিখ (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = selectedDate.isNotBlank() && !selectedDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = selectedStartTime,
-                        onValueChange = { selectedStartTime = it },
-                        label = { Text("শুরুর সময় (HH:MM, 24-ঘন্টা ফরম্যাট)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = selectedStartTime.isNotBlank() && !selectedStartTime.matches(Regex("\\d{2}:\\d{2}"))
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = selectedEndTime,
-                        onValueChange = { selectedEndTime = it },
-                        label = { Text("শেষের সময় (HH:MM, 24-ঘন্টা ফরম্যাট)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = selectedEndTime.isNotBlank() && !selectedEndTime.matches(Regex("\\d{2}:\\d{2}"))
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (!selectedDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                            scope.launch { snackbarHostState.showSnackbar("বৈধ তারিখ প্রয়োজন (YYYY-MM-DD)") }
-                        } else if (!selectedStartTime.matches(Regex("\\d{2}:\\d{2}"))) {
-                            scope.launch { snackbarHostState.showSnackbar("বৈধ শুরুর সময় প্রয়োজন (HH:MM)") }
-                        } else if (!selectedEndTime.matches(Regex("\\d{2}:\\d{2}"))) {
-                            scope.launch { snackbarHostState.showSnackbar("বৈধ শেষের সময় প্রয়োজন (HH:MM)") }
-                        } else {
-                            scope.launch {
-                                try {
-                                    val startTimeParts = selectedStartTime.split(":")
-                                    val endTimeParts = selectedEndTime.split(":")
-                                    val calendar = Calendar.getInstance()
-                                    calendar.set(
-                                        selectedDate.substring(0, 4).toInt(),
-                                        selectedDate.substring(5, 7).toInt() - 1,
-                                        selectedDate.substring(8, 10).toInt(),
-                                        startTimeParts[0].toInt(),
-                                        startTimeParts[1].toInt()
-                                    )
-                                    val startTime = calendar.timeInMillis
-                                    calendar.set(
-                                        selectedDate.substring(0, 4).toInt(),
-                                        selectedDate.substring(5, 7).toInt() - 1,
-                                        selectedDate.substring(8, 10).toInt(),
-                                        endTimeParts[0].toInt(),
-                                        endTimeParts[1].toInt()
-                                    )
-                                    val endTime = calendar.timeInMillis
-                                    if (endTime <= startTime) {
-                                        scope.launch { snackbarHostState.showSnackbar("শেষের সময় শুরুর সময়ের পরে হতে হবে") }
-                                        return@launch
-                                    }
-                                    val result = AuthRepository().createSchedule(
-                                        busId = assignedBus!!.busId,
-                                        conductorId = user.uid,
-                                        startTime = startTime,
-                                        endTime = endTime,
-                                        date = selectedDate
-                                    )
-                                    if (result.isSuccess) {
-                                        Toast.makeText(context, "শিডিউল তৈরি সফল", Toast.LENGTH_SHORT).show()
-                                        schedules = AuthRepository().getSchedulesForConductor(user.uid)
-                                        schedules = schedules.filter { it.endTime >= System.currentTimeMillis() }
-                                        showScheduleDialog = false
-                                        selectedDate = ""
-                                        selectedStartTime = ""
-                                        selectedEndTime = ""
-                                    } else {
-                                        error = result.exceptionOrNull()?.message ?: "শিডিউল তৈরি ব্যর্থ"
-                                        scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                                    }
-                                } catch (e: Exception) {
-                                    error = "শিডিউল তৈরি ব্যর্থ: ${e.message}"
-                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                                }
-                            }
-                        }
-                    }
-                ) {
-                    Text("সংরক্ষণ করুন")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showScheduleDialog = false }) {
-                    Text("বাতিল")
-                }
-            }
-        )
     }
 }

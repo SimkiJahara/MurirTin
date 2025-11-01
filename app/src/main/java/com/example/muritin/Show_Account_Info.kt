@@ -177,7 +177,7 @@ fun Show_Account_Info(
                     onClick = { showDelAccDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Red,
+                        containerColor = Color(0xFFB71C1C),
                         contentColor = Color.White
                     )
                 ) {

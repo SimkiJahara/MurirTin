@@ -276,7 +276,7 @@ fun SignUpScreen(
                                         isLoading = false
                                         when {
                                             result.isSuccess -> {
-                                                Toast.makeText(context, if (preSelectedRole == "Conductor") "কন্ডাক্টর নিবন্ধন সফল, যাচাই ইমেইল পাঠানো হয়েছে" else "নিবন্ধন সফল, যাচাই ইমেইল পাঠানো হয়েছে", Toast.LENGTH_LONG).show()
+                                                Toast.makeText(context, if (preSelectedRole == "Conductor") "কন্ডাক্টর নিবন্ধন সফল, ইমেইল এর লিঙ্ক এ যেয়ে যাচাই সম্পন্ন করুন নতুবা লগইন সম্ভব নয়" else "নিবন্ধন সফল, ইমেইল এর লিঙ্ক এ যেয়ে যাচাই সম্পন্ন করুন নতুবা লগইন সম্ভব নয়", Toast.LENGTH_LONG).show()
                                                 result.getOrNull()?.let { onSignUpSuccess(it) }
                                             }
                                             else -> {
