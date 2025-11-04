@@ -1,4 +1,3 @@
-
 package com.example.muritin
 
 import android.Manifest
@@ -6,9 +5,11 @@ import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
 import android.util.Log
-import android.widget.Button
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,37 +23,28 @@ import androidx.navigation.NavHostController
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.*
+import com.google.android.gms.maps.model.BitmapDescriptorFactory.HUE_BLUE
+import com.google.android.gms.maps.model.BitmapDescriptorFactory.HUE_GREEN
 import com.google.firebase.auth.FirebaseUser
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import kotlin.collections.isNotEmpty
-import androidx.compose.foundation.clickable
-
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val fusedLocationClient: FusedLocationProviderClient =
-        remember { LocationServices.getFusedLocationProviderClient(context) }
+    val fusedLocationClient: FusedLocationProviderClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
 
-    // ---------- UI state ----------
+    // ---------- UI State ----------
     var pickupAddr by remember { mutableStateOf("") }
     var destinationAddr by remember { mutableStateOf("") }
     var seats by remember { mutableStateOf("1") }
@@ -63,7 +55,6 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
 
     val apiKey = context.getString(R.string.map_api_key)
     val placesClient = remember { com.google.android.libraries.places.api.Places.createClient(context) }
-
     val retrofit = remember {
         Retrofit.Builder()
             .baseUrl("https://maps.googleapis.com/")
@@ -84,16 +75,14 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     var screenForPickup by remember { mutableStateOf(true) }
     var screenForDest by remember { mutableStateOf(false) }
 
-    // ---------- Nearby stops ----------
-    var nearbyPickupStops by remember { mutableStateOf<List<PointLocation>>(emptyList()) }
+    // Nearby stops with distance
+    var nearbyPickupStops by remember { mutableStateOf<List<StopWithDistance>>(emptyList()) }
+    var nearbyDestStops by remember { mutableStateOf<List<StopWithDistance>>(emptyList()) }
     var selectedPickupStop by remember { mutableStateOf<PointLocation?>(null) }
-
-    var nearbyDestStops by remember { mutableStateOf<List<PointLocation>>(emptyList()) }
     var selectedDestStop by remember { mutableStateOf<PointLocation?>(null) }
-
     var isFetchingStops by remember { mutableStateOf(false) }
 
-    // ---------- Get current location ----------
+    // ---------- Get Current Location ----------
     LaunchedEffect(Unit) {
         if (ContextCompat.checkSelfPermission(
                 context,
@@ -109,7 +98,7 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     cameraPositionState.animate(
                         CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f)
                     )
-                    // reverse-geocode (optional)
+                    // Reverse geocode
                     try {
                         val resp = withContext(kotlinx.coroutines.Dispatchers.IO) {
                             geocodingApi.getAddressFromLatLng(
@@ -128,13 +117,13 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                 Log.e("TripRequestScreen", "Location fetch failed: ${e.message}")
             }
         } else {
-            Toast.makeText(context, "লোকেশন পারমিশন প্রয়োজন", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Location permission required", Toast.LENGTH_SHORT).show()
         }
     }
 
     // ---------- UI ----------
     Scaffold(
-        topBar = { TopAppBar(title = { Text("ট্রিপ রিকোয়েস্ট") }) },
+        topBar = { TopAppBar(title = { Text("Trip Request") }) },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { padding ->
         Column(
@@ -144,10 +133,11 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+
             // ==================== PICKUP ====================
             if (screenForPickup) {
                 SearchLocation(
-                    label = "পিকআপ",
+                    label = "Pickup",
                     apiKey = apiKey,
                     placesClient = placesClient,
                     geocodingApi = geocodingApi,
@@ -160,11 +150,10 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     cameraPositionState = cameraPositionState
                 )
 
-                // map click → approximate pickup
+                // Map click → approximate pickup
                 val onMapClick: (LatLng) -> Unit = { latLng ->
                     pickupLatLng = latLng
-                    cameraPositionState.position =
-                        CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                    cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
                     scope.launch {
                         try {
                             val geocoder = Geocoder(context)
@@ -175,7 +164,7 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                                 latLng.toString()
                             }
                         } catch (e: Exception) {
-                            pickupAddr = "লোকেশন পাওয়া যায়নি"
+                            pickupAddr = "Location not found"
                         }
                     }
                 }
@@ -190,26 +179,24 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     onMapClick = onMapClick
                 ) {
                     pickupLatLng?.let {
-                        Marker(state = MarkerState(position = it), title = "আনুমানিক পিকআপ", snippet = pickupAddr)
+                        Marker(state = MarkerState(position = it), title = "Approx Pickup", snippet = pickupAddr)
                     }
-
-                    // nearby stops markers
-                    nearbyPickupStops.forEach { stop ->
-                        val pos = LatLng(stop.latitude, stop.longitude)
+                    nearbyPickupStops.forEach { item ->
+                        val pos = LatLng(item.stop.latitude, item.stop.longitude)
                         Marker(
                             state = MarkerState(position = pos),
-                            title = stop.address,
-                            icon = if (selectedPickupStop == stop)
-                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
-                            else
-                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)
+                            title = item.stop.address,
+                            snippet = "%.2f km away".format(item.distanceKm),
+                            icon = BitmapDescriptorFactory.defaultMarker(
+                                if (selectedPickupStop == item.stop) HUE_GREEN else HUE_BLUE
+                            )
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // fetch nearby stops
+                // Fetch nearby pickup stops
                 if (pickupLatLng != null) {
                     Button(
                         onClick = {
@@ -217,38 +204,52 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                             scope.launch {
                                 nearbyPickupStops = AuthRepository().getNearbyBusStops(pickupLatLng!!, 2.5)
                                 isFetchingStops = false
-                                if (nearbyPickupStops.isEmpty()) {
-                                    error = "2.5 কিমি এর মধ্যে কোনো স্টপ পাওয়া যায়নি"
-                                    snackbarHostState.showSnackbar(error ?: "")
-                                }
                             }
                         },
                         enabled = !isFetchingStops
                     ) {
                         if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                        else Text("কাছাকাছি পিকআপ লোকেশন খুঁজুন")
+                        else Text("Find Nearby Pickup Stops")
                     }
                 }
 
-                // list of nearby stops
+                // List of nearby pickup stops
                 if (nearbyPickupStops.isNotEmpty()) {
-                    Text("কাছাকাছি পিকআপ লোকেশনসমূহ (2.5 কিমি):")
-                    LazyColumn(modifier = Modifier.heightIn(max = 150.dp)) {
-                        items(nearbyPickupStops) { stop ->
+                    Text("Nearby Pickup Stops (2.5 km):")
+                    LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
+                        items(nearbyPickupStops) { item ->
                             ListItem(
-                                headlineContent = { Text(stop.address) },
+                                headlineContent = {
+                                    Text("${item.stop.address} (${"%.2f".format(item.distanceKm)} km)")
+                                },
                                 modifier = Modifier.clickable {
-                                    selectedPickupStop = stop
-                                    pickupAddr = stop.address
-                                    pickupLatLng = LatLng(stop.latitude, stop.longitude)
+                                    selectedPickupStop = item.stop
+                                    pickupAddr = item.stop.address
+                                    pickupLatLng = LatLng(item.stop.latitude, item.stop.longitude)
                                     scope.launch {
                                         cameraPositionState.animate(
-                                            CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f)
+                                            CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 16f)
                                         )
                                     }
                                 }
                             )
                         }
+                    }
+
+                    // Auto-select closest
+                    Button(
+                        onClick = {
+                            val closest = nearbyPickupStops.minByOrNull { it.distanceKm }!!
+                            selectedPickupStop = closest.stop
+                            pickupAddr = closest.stop.address
+                            pickupLatLng = LatLng(closest.stop.latitude, closest.stop.longitude)
+                            scope.launch {
+                                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 16f))
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
+                        Text("Select Closest Stop")
                     }
                 }
 
@@ -257,7 +258,7 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                 Button(
                     onClick = {
                         if (selectedPickupStop == null) {
-                            error = "একটি পিকআপ স্টপ নির্বাচন করুন"
+                            error = "Please select a pickup stop"
                             scope.launch { snackbarHostState.showSnackbar(error ?: "") }
                         } else {
                             screenForPickup = false
@@ -265,14 +266,14 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                         }
                     }
                 ) {
-                    Text("গন্তব্য নির্বাচন করুন")
+                    Text("Select Destination")
                 }
             }
 
             // ==================== DESTINATION ====================
             if (screenForDest) {
                 SearchLocation(
-                    label = "গন্তব্য",
+                    label = "Destination",
                     apiKey = apiKey,
                     placesClient = placesClient,
                     geocodingApi = geocodingApi,
@@ -288,16 +289,15 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                 OutlinedTextField(
                     value = seats,
                     onValueChange = { seats = it },
-                    label = { Text("সিট সংখ্যা") },
+                    label = { Text("Seats") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("আনুমানিক ভাড়া: $fare টাকা")
 
-                // map click → approximate destination
-                val onMapClick: (LatLng) -> Unit = { latLng ->
+                Text("Estimated Fare: ৳$fare")
+
+                val onMapClickDest: (LatLng) -> Unit = { latLng ->
                     destinationLatLng = latLng
-                    cameraPositionState.position =
-                        CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                    cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
                     scope.launch {
                         try {
                             val geocoder = Geocoder(context)
@@ -308,7 +308,7 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                                 latLng.toString()
                             }
                         } catch (e: Exception) {
-                            destinationAddr = "লোকেশন পাওয়া যায়নি"
+                            destinationAddr = "Location not found"
                         }
                     }
                 }
@@ -320,32 +320,29 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     cameraPositionState = cameraPositionState,
                     properties = MapProperties(isTrafficEnabled = true),
                     uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false),
-                    onMapClick = onMapClick
+                    onMapClick = onMapClickDest
                 ) {
                     pickupLatLng?.let {
-                        Marker(state = MarkerState(position = it), title = "পিকআপ", snippet = pickupAddr)
+                        Marker(state = MarkerState(position = it), title = "Pickup", snippet = pickupAddr)
                     }
                     destinationLatLng?.let {
-                        Marker(state = MarkerState(position = it), title = "আনুমানিক গন্তব্য", snippet = destinationAddr)
+                        Marker(state = MarkerState(position = it), title = "Approx Dest", snippet = destinationAddr)
                     }
-
-                    // nearby dest stops markers
-                    nearbyDestStops.forEach { stop ->
-                        val pos = LatLng(stop.latitude, stop.longitude)
+                    nearbyDestStops.forEach { item ->
+                        val pos = LatLng(item.stop.latitude, item.stop.longitude)
                         Marker(
                             state = MarkerState(position = pos),
-                            title = stop.address,
-                            icon = if (selectedDestStop == stop)
-                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
-                            else
-                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)
+                            title = item.stop.address,
+                            snippet = "%.2f km away".format(item.distanceKm),
+                            icon = BitmapDescriptorFactory.defaultMarker(
+                                if (selectedDestStop == item.stop) HUE_GREEN else HUE_BLUE
+                            )
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // fetch nearby destination stops
                 if (destinationLatLng != null) {
                     Button(
                         onClick = {
@@ -353,44 +350,56 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                             scope.launch {
                                 nearbyDestStops = AuthRepository().getNearbyBusStops(destinationLatLng!!, 2.5)
                                 isFetchingStops = false
-                                if (nearbyDestStops.isEmpty()) {
-                                    error = "2.5 কিমি এর মধ্যে কোনো স্টপ পাওয়া যায়নি"
-                                    snackbarHostState.showSnackbar(error ?: "")
-                                }
                             }
                         },
                         enabled = !isFetchingStops
                     ) {
                         if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                        else Text("কাছাকাছি গন্তব্য লোকেশন খুঁজুন")
+                        else Text("Find Nearby Destination Stops")
                     }
                 }
 
-                // list of nearby destination stops
                 if (nearbyDestStops.isNotEmpty()) {
-                    Text("কাছাকাছি গন্তব্য লোকেশনসমূহ (2.5 কিমি):")
-                    LazyColumn(modifier = Modifier.heightIn(max = 150.dp)) {
-                        items(nearbyDestStops) { stop ->
+                    Text("Nearby Destination Stops (2.5 km):")
+                    LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
+                        items(nearbyDestStops) { item ->
                             ListItem(
-                                headlineContent = { Text(stop.address) },
+                                headlineContent = {
+                                    Text("${item.stop.address} (${"%.2f".format(item.distanceKm)} km)")
+                                },
                                 modifier = Modifier.clickable {
-                                    selectedDestStop = stop
-                                    destinationAddr = stop.address
-                                    destinationLatLng = LatLng(stop.latitude, stop.longitude)
+                                    selectedDestStop = item.stop
+                                    destinationAddr = item.stop.address
+                                    destinationLatLng = LatLng(item.stop.latitude, item.stop.longitude)
                                     scope.launch {
                                         cameraPositionState.animate(
-                                            CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 15f)
+                                            CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 16f)
                                         )
                                     }
                                 }
                             )
                         }
                     }
+
+                    Button(
+                        onClick = {
+                            val closest = nearbyDestStops.minByOrNull { it.distanceKm }!!
+                            selectedDestStop = closest.stop
+                            destinationAddr = closest.stop.address
+                            destinationLatLng = LatLng(closest.stop.latitude, closest.stop.longitude)
+                            scope.launch {
+                                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 16f))
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
+                        Text("Select Closest Stop")
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Reset button
+                // Reset
                 Button(
                     onClick = {
                         pickupAddr = ""; pickupLatLng = null
@@ -400,19 +409,18 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                         screenForDest = false; screenForPickup = true
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFB71C1C),
-                        contentColor = Color.White
-                    )
-                ) { Text("রুট বাতিল করুন") }
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C), contentColor = Color.White)
+                ) {
+                    Text("Cancel Route")
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Submit request
+                // Submit
                 Button(
                     onClick = {
                         if (selectedPickupStop == null || selectedDestStop == null || seats.toIntOrNull() == null) {
-                            error = "সকল তথ্য পূরণ করুন"
+                            error = "Please fill all fields"
                             scope.launch { snackbarHostState.showSnackbar(error ?: "") }
                             return@Button
                         }
@@ -430,10 +438,10 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                             )
                             isLoading = false
                             if (result.isSuccess) {
-                                Toast.makeText(context, "রিকোয়েস্ট জমা দেওয়া হয়েছে", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Request submitted", Toast.LENGTH_SHORT).show()
                                 navController.navigate("my_requests")
                             } else {
-                                error = result.exceptionOrNull()?.message ?: "রিকোয়েস্ট ব্যর্থ"
+                                error = result.exceptionOrNull()?.message ?: "Request failed"
                                 snackbarHostState.showSnackbar(error ?: "")
                             }
                         }
@@ -442,7 +450,7 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     enabled = !isLoading
                 ) {
                     if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    else Text("রিকোয়েস্ট জমা দিন")
+                    else Text("Submit Request")
                 }
             }
         }

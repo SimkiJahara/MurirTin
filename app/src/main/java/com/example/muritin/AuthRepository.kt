@@ -19,6 +19,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import com.firebase.geofire.GeoFireUtils
 import com.firebase.geofire.GeoLocation
+import java.util.Locale
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -421,7 +422,6 @@ class AuthRepository {
             Result.failure(e)
         }
     }
-
     suspend fun getPendingRequestsForConductor(
         conductorId: String,
         currentLocation: LatLng,
@@ -430,80 +430,80 @@ class AuthRepository {
         directionsApi: DirectionsApi
     ): List<Request> {
         return try {
+            // 1. Active schedule check
             val busId = getBusForConductor(conductorId) ?: return emptyList()
             val schedules = getSchedulesForBus(busId)
             val currentTime = System.currentTimeMillis()
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd")
-            val currentDate = dateFormat.format(Date(currentTime))
-            val geoHashesofThisBus: MutableList<String> = mutableListOf()
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val today = dateFormat.format(Date(currentTime))
 
             val activeSchedule = schedules.firstOrNull {
-                it.date == currentDate && it.startTime <= currentTime && it.endTime >= currentTime
-            }
-            if (activeSchedule == null) {
-                Log.d("AuthRepository", "No active schedule for conductor $conductorId on $currentDate")
-                return emptyList()
-            }
+                it.date == today && it.startTime <= currentTime && it.endTime >= currentTime
+            } ?: return emptyList()
 
+            // 2. All pending requests
             val snapshot = database.getReference("requests")
                 .orderByChild("status")
                 .equalTo("Pending")
                 .get()
                 .await()
-            val pendingRequests = snapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Request::class.java)
-            }
-            //Converting rider's pickup and destination point to geohash
-            for (req in pendingRequests) {
-                var geoLocation = GeoLocation(
-                    req.pickupLatLng?.lat ?: 0.0,
-                    req.pickupLatLng?.lng ?: 0.0
-                )
-                req.pickupGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-                geoLocation = GeoLocation(
-                    req.destinationLatLng?.lat ?: 0.0,
-                    req.destinationLatLng?.lng ?: 0.0
-                )
-                req.destinationGeoHash = GeoFireUtils.getGeoHashForLocation(geoLocation, 5)
-            }
-            //Collecting geohashes for the assigned bus route
-            if (bus.route != null) {
-                bus.route.originLoc?.let { loc ->
-                    val originGeohash = loc.geohash
-                    if (originGeohash.isNotEmpty()) geoHashesofThisBus.add(originGeohash)
+
+            val pendingRequests = snapshot.children
+                .mapNotNull { it.getValue(Request::class.java) }
+
+            // 3. Build ordered list of bus stops (origin → stops → destination)
+            val orderedStops = mutableListOf<String>()
+            bus.route?.let { route ->
+                route.originLoc?.address?.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
+                route.stopPointsLoc.forEach { stop ->
+                    stop.address.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
                 }
-                bus.route.destinationLoc?.let { loc ->
-                    val destGeohash = loc.geohash
-                    if (destGeohash.isNotEmpty()) geoHashesofThisBus.add(destGeohash)
-                }
-                for (point in bus.route.stopPointsLoc) {
-                    val stopGeohash = point.geohash
-                    if (stopGeohash.isNotEmpty()) geoHashesofThisBus.add(stopGeohash)
-                }
+                route.destinationLoc?.address?.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
             }
 
-            val routeMatching = pendingRequests.filter { req: Request ->
-                geoHashesofThisBus.contains(req.pickupGeoHash) && geoHashesofThisBus.contains(req.destinationGeoHash)
+            if (orderedStops.size < 2) return emptyList()
+
+            // Normalize for comparison
+            val normalizedStops = orderedStops.map { it.lowercase() }
+            fun normalize(str: String) = str.trim().lowercase()
+
+            // 4. Filter requests where pickup & dest are in route AND pickup comes before dest
+            val validRequests = pendingRequests.filter { req ->
+                val pickupNorm = normalize(req.pickup)
+                val destNorm = normalize(req.destination)
+
+                val pickupIndex = normalizedStops.indexOf(pickupNorm)
+                val destIndex = normalizedStops.indexOf(destNorm)
+
+                pickupIndex != -1 && destIndex != -1 && pickupIndex < destIndex
             }
 
-            val nearbyRequests = routeMatching.filter { req: Request ->
+            // 5. Filter by driving time ≤ 30 mins from conductor to pickup
+            val finalRequests = validRequests.filter { req ->
                 val pickupLatLng = LatLng(req.pickupLatLng!!.lat, req.pickupLatLng.lng)
                 val originStr = "${currentLocation.latitude},${currentLocation.longitude}"
                 val destStr = "${pickupLatLng.latitude},${pickupLatLng.longitude}"
-                val response = withContext(Dispatchers.IO) {
-                    directionsApi.getRoute(originStr, destStr, null, apiKey)
-                }
-                if (response.status == "OK" && response.routes.isNotEmpty()) {
-                    val duration = response.routes[0].legs[0].duration.value
-                    (duration / 60) <= 30
-                } else {
+
+                try {
+                    val response = withContext(Dispatchers.IO) {
+                        directionsApi.getRoute(originStr, destStr, null, apiKey)
+                    }
+                    response.status == "OK" &&
+                            response.routes.isNotEmpty() &&
+                            response.routes[0].legs[0].duration.value <= 1800 // 30 mins
+                } catch (e: Exception) {
                     false
                 }
             }
-            Log.d("AuthRepository", "Fetched ${nearbyRequests.size} pending requests for bus $busId")
-            nearbyRequests
+
+            Log.d(
+                "ConductorReq",
+                "Conductor $conductorId → ${finalRequests.size} valid requests " +
+                        "(exact sub-route + ≤30min)"
+            )
+            finalRequests
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Get pending requests failed: ${e.message}", e)
+            Log.e("AuthRepository", "getPendingRequests failed: ${e.message}", e)
             emptyList()
         }
     }
@@ -819,33 +819,74 @@ class AuthRepository {
             false
         }
     }
-    suspend fun getNearbyBusStops(location: LatLng, radiusKm: Double = 2.5): List<PointLocation> {
-        return try {
-            val snapshot = database.getReference("buses").get().await()
-            val geoLocation = GeoLocation(location.latitude, location.longitude)
-            val stopsWithDist = mutableListOf<Pair<PointLocation, Double>>()
-            for (child in snapshot.children) {
-                val bus = child.getValue(Bus::class.java) ?: continue
-                bus.route?.let { route ->
-                    route.originLoc?.let { loc ->
-                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
-                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
-                    }
-                    route.destinationLoc?.let { loc ->
-                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
-                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
-                    }
-                    route.stopPointsLoc.forEach { loc ->
-                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
-                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
+//    suspend fun getNearbyBusStops(location: LatLng, radiusKm: Double = 2.5): List<PointLocation> {
+//        return try {
+//            val snapshot = database.getReference("buses").get().await()
+//            val geoLocation = GeoLocation(location.latitude, location.longitude)
+//            val stopsWithDist = mutableListOf<Pair<PointLocation, Double>>()
+//            for (child in snapshot.children) {
+//                val bus = child.getValue(Bus::class.java) ?: continue
+//                bus.route?.let { route ->
+//                    route.originLoc?.let { loc ->
+//                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
+//                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
+//                    }
+//                    route.destinationLoc?.let { loc ->
+//                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
+//                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
+//                    }
+//                    route.stopPointsLoc.forEach { loc ->
+//                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
+//                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
+//                    }
+//                }
+//            }
+//            // Sort by distance and deduplicate by geohash
+//            stopsWithDist.sortedBy { it.second }.distinctBy { it.first.geohash }.map { it.first }
+//        } catch (e: Exception) {
+//            Log.e("AuthRepository", "Get nearby stops failed: ${e.message}", e)
+//            emptyList()
+//        }
+//    }
+suspend fun getNearbyBusStops(
+    location: LatLng,
+    radiusKm: Double = 2.5
+): List<StopWithDistance> {
+    return try {
+        val snapshot = database.getReference("buses").get().await()
+        val riderLoc = GeoLocation(location.latitude, location.longitude)
+        val stopsWithDist = mutableListOf<StopWithDistance>()
+
+        for (child in snapshot.children) {
+            val bus = child.getValue(Bus::class.java) ?: continue
+            bus.route?.let { route ->
+
+                // Helper: add stop if within radius
+                fun addStopIfNear(loc: PointLocation?) {
+                    loc ?: return
+                    val stopLoc = GeoLocation(loc.latitude, loc.longitude)
+                    val distanceMeters = GeoFireUtils.getDistanceBetween(riderLoc, stopLoc)
+                    if (distanceMeters <= radiusKm * 1000) {
+                        stopsWithDist.add(StopWithDistance(loc, distanceMeters / 1000.0))
                     }
                 }
+
+                addStopIfNear(route.originLoc)
+                addStopIfNear(route.destinationLoc)
+                route.stopPointsLoc.forEach { addStopIfNear(it) }
             }
-            // Sort by distance and deduplicate by geohash
-            stopsWithDist.sortedBy { it.second }.distinctBy { it.first.geohash }.map { it.first }
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get nearby stops failed: ${e.message}", e)
-            emptyList()
         }
+
+        // Sort by distance, take top 10
+        val result = stopsWithDist
+            .sortedBy { it.distanceKm }
+            .take(10)
+
+        Log.d("NearbyStops", "Found ${result.size} stops within ${radiusKm}km of (${location.latitude}, ${location.longitude})")
+        result
+    } catch (e: Exception) {
+        Log.e("AuthRepository", "getNearbyBusStops failed: ${e.message}", e)
+        emptyList()
     }
+}
 }

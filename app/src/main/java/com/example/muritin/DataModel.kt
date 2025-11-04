@@ -112,5 +112,10 @@ data class Message(
     val text: String = "",
     val timestamp: Long = 0L
 )
+@Serializable
+data class StopWithDistance(
+    val stop: PointLocation,
+    val distanceKm: Double
+)
 
 
