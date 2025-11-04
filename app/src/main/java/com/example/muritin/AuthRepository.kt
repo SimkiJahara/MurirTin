@@ -819,4 +819,33 @@ class AuthRepository {
             false
         }
     }
+    suspend fun getNearbyBusStops(location: LatLng, radiusKm: Double = 2.5): List<PointLocation> {
+        return try {
+            val snapshot = database.getReference("buses").get().await()
+            val geoLocation = GeoLocation(location.latitude, location.longitude)
+            val stopsWithDist = mutableListOf<Pair<PointLocation, Double>>()
+            for (child in snapshot.children) {
+                val bus = child.getValue(Bus::class.java) ?: continue
+                bus.route?.let { route ->
+                    route.originLoc?.let { loc ->
+                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
+                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
+                    }
+                    route.destinationLoc?.let { loc ->
+                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
+                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
+                    }
+                    route.stopPointsLoc.forEach { loc ->
+                        val dist = GeoFireUtils.getDistanceBetween(geoLocation, GeoLocation(loc.latitude, loc.longitude))
+                        if (dist <= radiusKm * 1000) stopsWithDist.add(loc to dist)
+                    }
+                }
+            }
+            // Sort by distance and deduplicate by geohash
+            stopsWithDist.sortedBy { it.second }.distinctBy { it.first.geohash }.map { it.first }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get nearby stops failed: ${e.message}", e)
+            emptyList()
+        }
+    }
 }

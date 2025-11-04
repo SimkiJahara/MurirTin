@@ -37,13 +37,22 @@ import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import kotlin.collections.isNotEmpty
+import androidx.compose.foundation.clickable
+
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val fusedLocationClient: FusedLocationProviderClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    val fusedLocationClient: FusedLocationProviderClient =
+        remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    // ---------- UI state ----------
     var pickupAddr by remember { mutableStateOf("") }
     var destinationAddr by remember { mutableStateOf("") }
     var seats by remember { mutableStateOf("1") }
@@ -54,6 +63,7 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
 
     val apiKey = context.getString(R.string.map_api_key)
     val placesClient = remember { com.google.android.libraries.places.api.Places.createClient(context) }
+
     val retrofit = remember {
         Retrofit.Builder()
             .baseUrl("https://maps.googleapis.com/")
@@ -62,11 +72,11 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     }
     val geocodingApi = remember { retrofit.create(GeocodingApi::class.java) }
     val directionsApi = remember { retrofit.create(DirectionsApi::class.java) }
-    val coroutineScope = rememberCoroutineScope()
 
     var pickupLatLng by remember { mutableStateOf<LatLng?>(null) }
     var destinationLatLng by remember { mutableStateOf<LatLng?>(null) }
-    val initialPosition = LatLng(23.8103, 90.4125)  // Dhaka
+
+    val initialPosition = LatLng(23.8103, 90.4125) // Dhaka
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(initialPosition, 10f)
     }
@@ -74,24 +84,44 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     var screenForPickup by remember { mutableStateOf(true) }
     var screenForDest by remember { mutableStateOf(false) }
 
+    // ---------- Nearby stops ----------
+    var nearbyPickupStops by remember { mutableStateOf<List<PointLocation>>(emptyList()) }
+    var selectedPickupStop by remember { mutableStateOf<PointLocation?>(null) }
+
+    var nearbyDestStops by remember { mutableStateOf<List<PointLocation>>(emptyList()) }
+    var selectedDestStop by remember { mutableStateOf<PointLocation?>(null) }
+
+    var isFetchingStops by remember { mutableStateOf(false) }
+
+    // ---------- Get current location ----------
     LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
             try {
                 val location: Location? = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     fusedLocationClient.lastLocation.await()
                 }
                 if (location != null) {
                     pickupLatLng = LatLng(location.latitude, location.longitude)
-                    cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f))
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f)
+                    )
+                    // reverse-geocode (optional)
                     try {
-                        val response = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            geocodingApi.getLatLng("${location.latitude},${location.longitude}", apiKey)
+                        val resp = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            geocodingApi.getAddressFromLatLng(
+                                "${location.latitude},${location.longitude}",
+                                apiKey
+                            )
                         }
-                        if (response.status == "OK" && response.results.isNotEmpty()) {
-                            pickupAddr = response.results[0].geometry.location.toString()
+                        if (resp.status == "OK" && resp.results.isNotEmpty()) {
+                            pickupAddr = resp.results[0].formattedAddress
                         }
                     } catch (e: Exception) {
-                        Log.e("TripRequestScreen", "Reverse geocoding failed: ${e.message}")
+                        Log.e("TripRequestScreen", "Reverse geo failed: ${e.message}")
                     }
                 }
             } catch (e: Exception) {
@@ -102,10 +132,9 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
         }
     }
 
+    // ---------- UI ----------
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("ট্রিপ রিকোয়েস্ট") })
-        },
+        topBar = { TopAppBar(title = { Text("ট্রিপ রিকোয়েস্ট") }) },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { padding ->
         Column(
@@ -115,40 +144,42 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if(screenForPickup) {
+            // ==================== PICKUP ====================
+            if (screenForPickup) {
                 SearchLocation(
                     label = "পিকআপ",
                     apiKey = apiKey,
                     placesClient = placesClient,
                     geocodingApi = geocodingApi,
-                    coroutineScope = coroutineScope,
+                    coroutineScope = scope,
                     context = context,
-                    onLocationSelected = { addr: String, latlng: LatLng ->
+                    onLocationSelected = { addr, latlng ->
                         pickupAddr = addr
                         pickupLatLng = latlng
                     },
                     cameraPositionState = cameraPositionState
                 )
-                // On map click, update the clicked location
+
+                // map click → approximate pickup
                 val onMapClick: (LatLng) -> Unit = { latLng ->
                     pickupLatLng = latLng
-                    val latLngStr = String.format("%.4f,%.4f", latLng.latitude, latLng.longitude)
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
-                    coroutineScope.launch {
+                    cameraPositionState.position =
+                        CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                    scope.launch {
                         try {
-                            // Use Geocoder to get address
                             val geocoder = Geocoder(context)
-                            val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
-                            pickupAddr = if (addresses != null && addresses.isNotEmpty()) {
-                                addresses[0].getAddressLine(0) ?: latLngStr // Use first address line or go back to coordinates
+                            val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
+                            pickupAddr = if (addresses?.isNotEmpty() == true) {
+                                addresses[0].getAddressLine(0) ?: latLng.toString()
                             } else {
-                                "লোকেশন পাওয়া যায়নি: $latLngStr"
+                                latLng.toString()
                             }
                         } catch (e: Exception) {
-                            pickupAddr = "লোকেশন পাওয়া যায়নি: ${e.message}"
+                            pickupAddr = "লোকেশন পাওয়া যায়নি"
                         }
                     }
                 }
+
                 GoogleMap(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -158,34 +189,102 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false),
                     onMapClick = onMapClick
                 ) {
-                    pickupLatLng?.let { latLng ->
-                        Marker(state = MarkerState(position = latLng), title = "পিকআপ", snippet = pickupAddr)
+                    pickupLatLng?.let {
+                        Marker(state = MarkerState(position = it), title = "আনুমানিক পিকআপ", snippet = pickupAddr)
+                    }
+
+                    // nearby stops markers
+                    nearbyPickupStops.forEach { stop ->
+                        val pos = LatLng(stop.latitude, stop.longitude)
+                        Marker(
+                            state = MarkerState(position = pos),
+                            title = stop.address,
+                            icon = if (selectedPickupStop == stop)
+                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+                            else
+                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)
+                        )
                     }
                 }
+
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // fetch nearby stops
+                if (pickupLatLng != null) {
+                    Button(
+                        onClick = {
+                            isFetchingStops = true
+                            scope.launch {
+                                nearbyPickupStops = AuthRepository().getNearbyBusStops(pickupLatLng!!, 2.5)
+                                isFetchingStops = false
+                                if (nearbyPickupStops.isEmpty()) {
+                                    error = "2.5 কিমি এর মধ্যে কোনো স্টপ পাওয়া যায়নি"
+                                    snackbarHostState.showSnackbar(error ?: "")
+                                }
+                            }
+                        },
+                        enabled = !isFetchingStops
+                    ) {
+                        if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        else Text("কাছাকাছি পিকআপ লোকেশন খুঁজুন")
+                    }
+                }
+
+                // list of nearby stops
+                if (nearbyPickupStops.isNotEmpty()) {
+                    Text("কাছাকাছি পিকআপ লোকেশনসমূহ (2.5 কিমি):")
+                    LazyColumn(modifier = Modifier.heightIn(max = 150.dp)) {
+                        items(nearbyPickupStops) { stop ->
+                            ListItem(
+                                headlineContent = { Text(stop.address) },
+                                modifier = Modifier.clickable {
+                                    selectedPickupStop = stop
+                                    pickupAddr = stop.address
+                                    pickupLatLng = LatLng(stop.latitude, stop.longitude)
+                                    scope.launch {
+                                        cameraPositionState.animate(
+                                            CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 15f)
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Button(
                     onClick = {
-                        screenForPickup = false
-                        screenForDest = true
+                        if (selectedPickupStop == null) {
+                            error = "একটি পিকআপ স্টপ নির্বাচন করুন"
+                            scope.launch { snackbarHostState.showSnackbar(error ?: "") }
+                        } else {
+                            screenForPickup = false
+                            screenForDest = true
+                        }
                     }
-                ){
+                ) {
                     Text("গন্তব্য নির্বাচন করুন")
                 }
             }
-            if(screenForDest) {
+
+            // ==================== DESTINATION ====================
+            if (screenForDest) {
                 SearchLocation(
                     label = "গন্তব্য",
                     apiKey = apiKey,
                     placesClient = placesClient,
                     geocodingApi = geocodingApi,
-                    coroutineScope = coroutineScope,
+                    coroutineScope = scope,
                     context = context,
-                    onLocationSelected = { addr: String, latlng: LatLng ->
+                    onLocationSelected = { addr, latlng ->
                         destinationAddr = addr
                         destinationLatLng = latlng
                     },
                     cameraPositionState = cameraPositionState
                 )
+
                 OutlinedTextField(
                     value = seats,
                     onValueChange = { seats = it },
@@ -193,26 +292,27 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text("আনুমানিক ভাড়া: $fare টাকা")
-                // On map click, update the clicked location
+
+                // map click → approximate destination
                 val onMapClick: (LatLng) -> Unit = { latLng ->
                     destinationLatLng = latLng
-                    val latLngStr = String.format("%.4f,%.4f", latLng.latitude, latLng.longitude)
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
-                    coroutineScope.launch {
+                    cameraPositionState.position =
+                        CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                    scope.launch {
                         try {
-                            // Use Geocoder to get address
                             val geocoder = Geocoder(context)
-                            val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1) // Get 1 result
-                            destinationAddr = if (addresses != null && addresses.isNotEmpty()) {
-                                addresses[0].getAddressLine(0) ?: latLngStr
+                            val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
+                            destinationAddr = if (addresses?.isNotEmpty() == true) {
+                                addresses[0].getAddressLine(0) ?: latLng.toString()
                             } else {
-                                "লোকেশন পাওয়া যায়নি: $latLngStr"
+                                latLng.toString()
                             }
                         } catch (e: Exception) {
-                            destinationAddr = "লোকেশন পাওয়া যায়নি: ${e.message}"
+                            destinationAddr = "লোকেশন পাওয়া যায়নি"
                         }
                     }
                 }
+
                 GoogleMap(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -222,67 +322,119 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
                     uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false),
                     onMapClick = onMapClick
                 ) {
-                    pickupLatLng?.let { latLng ->
-                        Marker(state = MarkerState(position = latLng), title = "পিকআপ", snippet = pickupAddr)
+                    pickupLatLng?.let {
+                        Marker(state = MarkerState(position = it), title = "পিকআপ", snippet = pickupAddr)
                     }
-                    destinationLatLng?.let { latLng ->
-                        Marker(state = MarkerState(position = latLng), title = "গন্তব্য", snippet = destinationAddr)
+                    destinationLatLng?.let {
+                        Marker(state = MarkerState(position = it), title = "আনুমানিক গন্তব্য", snippet = destinationAddr)
+                    }
+
+                    // nearby dest stops markers
+                    nearbyDestStops.forEach { stop ->
+                        val pos = LatLng(stop.latitude, stop.longitude)
+                        Marker(
+                            state = MarkerState(position = pos),
+                            title = stop.address,
+                            icon = if (selectedDestStop == stop)
+                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+                            else
+                                BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)
+                        )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // fetch nearby destination stops
+                if (destinationLatLng != null) {
+                    Button(
+                        onClick = {
+                            isFetchingStops = true
+                            scope.launch {
+                                nearbyDestStops = AuthRepository().getNearbyBusStops(destinationLatLng!!, 2.5)
+                                isFetchingStops = false
+                                if (nearbyDestStops.isEmpty()) {
+                                    error = "2.5 কিমি এর মধ্যে কোনো স্টপ পাওয়া যায়নি"
+                                    snackbarHostState.showSnackbar(error ?: "")
+                                }
+                            }
+                        },
+                        enabled = !isFetchingStops
+                    ) {
+                        if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        else Text("কাছাকাছি গন্তব্য লোকেশন খুঁজুন")
+                    }
+                }
+
+                // list of nearby destination stops
+                if (nearbyDestStops.isNotEmpty()) {
+                    Text("কাছাকাছি গন্তব্য লোকেশনসমূহ (2.5 কিমি):")
+                    LazyColumn(modifier = Modifier.heightIn(max = 150.dp)) {
+                        items(nearbyDestStops) { stop ->
+                            ListItem(
+                                headlineContent = { Text(stop.address) },
+                                modifier = Modifier.clickable {
+                                    selectedDestStop = stop
+                                    destinationAddr = stop.address
+                                    destinationLatLng = LatLng(stop.latitude, stop.longitude)
+                                    scope.launch {
+                                        cameraPositionState.animate(
+                                            CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 15f)
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Reset button
                 Button(
                     onClick = {
-                        pickupAddr = ""
-                        pickupLatLng = null
-                        destinationAddr = ""
-                        destinationLatLng = null
-                        screenForDest = false
-                        screenForPickup = true
+                        pickupAddr = ""; pickupLatLng = null
+                        destinationAddr = ""; destinationLatLng = null
+                        nearbyPickupStops = emptyList(); nearbyDestStops = emptyList()
+                        selectedPickupStop = null; selectedDestStop = null
+                        screenForDest = false; screenForPickup = true
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFB71C1C),
                         contentColor = Color.White
                     )
-                ) {
-                    Text("রুট বাতিল করুন")
-                }
+                ) { Text("রুট বাতিল করুন") }
+
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Submit request
                 Button(
                     onClick = {
-                        if (pickupAddr.isBlank() || destinationAddr.isBlank() || seats.toIntOrNull() == null || pickupLatLng == null || destinationLatLng == null) {
+                        if (selectedPickupStop == null || selectedDestStop == null || seats.toIntOrNull() == null) {
                             error = "সকল তথ্য পূরণ করুন"
-                            scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                        } else {
-                            isLoading = true
-                            scope.launch {
-                                val result = AuthRepository().submitTripRequest(
-                                    riderId = user.uid,
-                                    pickup = pickupAddr,
-                                    destination = destinationAddr,
-                                    seats = seats.toInt(),
-                                    pickupLatLng = pickupLatLng!!,
-                                    destinationLatLng = destinationLatLng!!,
-                                    apiKey = apiKey,
-                                    directionsApi = directionsApi
-                                )
-                                isLoading = false
-                                if (result.isSuccess) {
-                                    Toast.makeText(
-                                        context,
-                                        "রিকোয়েস্ট জমা দেওয়া হয়েছে",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    navController.navigate("my_requests")
-                                } else {
-                                    error = result.exceptionOrNull()?.message ?: "রিকোয়েস্ট ব্যর্থ"
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            error ?: "অজানা ত্রুটি"
-                                        )
-                                    }
-                                }
+                            scope.launch { snackbarHostState.showSnackbar(error ?: "") }
+                            return@Button
+                        }
+                        isLoading = true
+                        scope.launch {
+                            val result = AuthRepository().submitTripRequest(
+                                riderId = user.uid,
+                                pickup = selectedPickupStop!!.address,
+                                destination = selectedDestStop!!.address,
+                                seats = seats.toInt(),
+                                pickupLatLng = LatLng(selectedPickupStop!!.latitude, selectedPickupStop!!.longitude),
+                                destinationLatLng = LatLng(selectedDestStop!!.latitude, selectedDestStop!!.longitude),
+                                apiKey = apiKey,
+                                directionsApi = directionsApi
+                            )
+                            isLoading = false
+                            if (result.isSuccess) {
+                                Toast.makeText(context, "রিকোয়েস্ট জমা দেওয়া হয়েছে", Toast.LENGTH_SHORT).show()
+                                navController.navigate("my_requests")
+                            } else {
+                                error = result.exceptionOrNull()?.message ?: "রিকোয়েস্ট ব্যর্থ"
+                                snackbarHostState.showSnackbar(error ?: "")
                             }
                         }
                     },
