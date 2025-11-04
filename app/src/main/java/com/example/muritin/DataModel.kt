@@ -65,7 +65,8 @@ data class Schedule(
     val startTime: Long = 0L,
     val endTime: Long = 0L,
     val date: String = "",
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    val direction: String = "going"
 )
 
 @Serializable
