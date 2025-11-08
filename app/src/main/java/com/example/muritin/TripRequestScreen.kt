@@ -43,7 +43,6 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     val fusedLocationClient: FusedLocationProviderClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
     }
-
     // ---------- UI State ----------
     var pickupAddr by remember { mutableStateOf("") }
     var destinationAddr by remember { mutableStateOf("") }
@@ -52,7 +51,6 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
-
     val apiKey = context.getString(R.string.map_api_key)
     val placesClient = remember { com.google.android.libraries.places.api.Places.createClient(context) }
     val retrofit = remember {
@@ -63,18 +61,14 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
     }
     val geocodingApi = remember { retrofit.create(GeocodingApi::class.java) }
     val directionsApi = remember { retrofit.create(DirectionsApi::class.java) }
-
     var pickupLatLng by remember { mutableStateOf<LatLng?>(null) }
     var destinationLatLng by remember { mutableStateOf<LatLng?>(null) }
-
     val initialPosition = LatLng(23.8103, 90.4125) // Dhaka
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(initialPosition, 10f)
     }
-
     var screenForPickup by remember { mutableStateOf(true) }
     var screenForDest by remember { mutableStateOf(false) }
-
     // Nearby stops with distance
     var nearbyPickupStops by remember { mutableStateOf<List<StopWithDistance>>(emptyList()) }
     var nearbyDestStops by remember { mutableStateOf<List<StopWithDistance>>(emptyList()) }
@@ -123,334 +117,316 @@ fun TripRequestScreen(navController: NavHostController, user: FirebaseUser) {
 
     // ---------- UI ----------
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Trip Request") }) },
+        topBar = { TopAppBar(title = { Text("ট্রিপ রিকোয়েস্ট") }) },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
-            // ==================== PICKUP ====================
-            if (screenForPickup) {
-                SearchLocation(
-                    label = "Pickup",
-                    apiKey = apiKey,
-                    placesClient = placesClient,
-                    geocodingApi = geocodingApi,
-                    coroutineScope = scope,
-                    context = context,
-                    onLocationSelected = { addr, latlng ->
-                        pickupAddr = addr
-                        pickupLatLng = latlng
-                    },
-                    cameraPositionState = cameraPositionState
-                )
-
-                // Map click → approximate pickup
-                val onMapClick: (LatLng) -> Unit = { latLng ->
-                    pickupLatLng = latLng
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
-                    scope.launch {
-                        try {
-                            val geocoder = Geocoder(context)
-                            val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
-                            pickupAddr = if (addresses?.isNotEmpty() == true) {
-                                addresses[0].getAddressLine(0) ?: latLng.toString()
-                            } else {
-                                latLng.toString()
-                            }
-                        } catch (e: Exception) {
-                            pickupAddr = "Location not found"
-                        }
-                    }
-                }
-
-                GoogleMap(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp),
-                    cameraPositionState = cameraPositionState,
-                    properties = MapProperties(isTrafficEnabled = true),
-                    uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false),
-                    onMapClick = onMapClick
-                ) {
-                    pickupLatLng?.let {
-                        Marker(state = MarkerState(position = it), title = "Approx Pickup", snippet = pickupAddr)
-                    }
-                    nearbyPickupStops.forEach { item ->
-                        val pos = LatLng(item.stop.latitude, item.stop.longitude)
-                        Marker(
-                            state = MarkerState(position = pos),
-                            title = item.stop.address,
-                            snippet = "%.2f km away".format(item.distanceKm),
-                            icon = BitmapDescriptorFactory.defaultMarker(
-                                if (selectedPickupStop == item.stop) HUE_GREEN else HUE_BLUE
-                            )
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Fetch nearby pickup stops
-                if (pickupLatLng != null) {
-                    Button(
-                        onClick = {
-                            isFetchingStops = true
-                            scope.launch {
-                                nearbyPickupStops = AuthRepository().getNearbyBusStops(pickupLatLng!!, 2.5)
-                                isFetchingStops = false
-                            }
-                        },
-                        enabled = !isFetchingStops
-                    ) {
-                        if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                        else Text("Find Nearby Pickup Stops")
-                    }
-                }
-
-                // List of nearby pickup stops
-                if (nearbyPickupStops.isNotEmpty()) {
-                    Text("Nearby Pickup Stops (2.5 km):")
-                    LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
-                        items(nearbyPickupStops) { item ->
-                            ListItem(
-                                headlineContent = {
-                                    Text("${item.stop.address} (${"%.2f".format(item.distanceKm)} km)")
-                                },
-                                modifier = Modifier.clickable {
-                                    selectedPickupStop = item.stop
-                                    pickupAddr = item.stop.address
-                                    pickupLatLng = LatLng(item.stop.latitude, item.stop.longitude)
-                                    scope.launch {
-                                        cameraPositionState.animate(
-                                            CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 16f)
-                                        )
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    // Auto-select closest
-                    Button(
-                        onClick = {
-                            val closest = nearbyPickupStops.minByOrNull { it.distanceKm }!!
-                            selectedPickupStop = closest.stop
-                            pickupAddr = closest.stop.address
-                            pickupLatLng = LatLng(closest.stop.latitude, closest.stop.longitude)
-                            scope.launch {
-                                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 16f))
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                    ) {
-                        Text("Select Closest Stop")
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        if (selectedPickupStop == null) {
-                            error = "Please select a pickup stop"
-                            scope.launch { snackbarHostState.showSnackbar(error ?: "") }
-                        } else {
-                            screenForPickup = false
-                            screenForDest = true
-                        }
-                    }
-                ) {
-                    Text("Select Destination")
-                }
-            }
-
-            // ==================== DESTINATION ====================
-            if (screenForDest) {
-                SearchLocation(
-                    label = "Destination",
-                    apiKey = apiKey,
-                    placesClient = placesClient,
-                    geocodingApi = geocodingApi,
-                    coroutineScope = scope,
-                    context = context,
-                    onLocationSelected = { addr, latlng ->
-                        destinationAddr = addr
-                        destinationLatLng = latlng
-                    },
-                    cameraPositionState = cameraPositionState
-                )
-
-                OutlinedTextField(
-                    value = seats,
-                    onValueChange = { seats = it },
-                    label = { Text("Seats") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Text("Estimated Fare: ৳$fare")
-
-                val onMapClickDest: (LatLng) -> Unit = { latLng ->
-                    destinationLatLng = latLng
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
-                    scope.launch {
-                        try {
-                            val geocoder = Geocoder(context)
-                            val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
-                            destinationAddr = if (addresses?.isNotEmpty() == true) {
-                                addresses[0].getAddressLine(0) ?: latLng.toString()
-                            } else {
-                                latLng.toString()
-                            }
-                        } catch (e: Exception) {
-                            destinationAddr = "Location not found"
-                        }
-                    }
-                }
-
-                GoogleMap(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    cameraPositionState = cameraPositionState,
-                    properties = MapProperties(isTrafficEnabled = true),
-                    uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false),
-                    onMapClick = onMapClickDest
-                ) {
-                    pickupLatLng?.let {
-                        Marker(state = MarkerState(position = it), title = "Pickup", snippet = pickupAddr)
-                    }
-                    destinationLatLng?.let {
-                        Marker(state = MarkerState(position = it), title = "Approx Dest", snippet = destinationAddr)
-                    }
-                    nearbyDestStops.forEach { item ->
-                        val pos = LatLng(item.stop.latitude, item.stop.longitude)
-                        Marker(
-                            state = MarkerState(position = pos),
-                            title = item.stop.address,
-                            snippet = "%.2f km away".format(item.distanceKm),
-                            icon = BitmapDescriptorFactory.defaultMarker(
-                                if (selectedDestStop == item.stop) HUE_GREEN else HUE_BLUE
-                            )
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (destinationLatLng != null) {
-                    Button(
-                        onClick = {
-                            isFetchingStops = true
-                            scope.launch {
-                                nearbyDestStops = AuthRepository().getNearbyBusStops(destinationLatLng!!, 2.5)
-                                isFetchingStops = false
-                            }
-                        },
-                        enabled = !isFetchingStops
-                    ) {
-                        if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                        else Text("Find Nearby Destination Stops")
-                    }
-                }
-
-                if (nearbyDestStops.isNotEmpty()) {
-                    Text("Nearby Destination Stops (2.5 km):")
-                    LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
-                        items(nearbyDestStops) { item ->
-                            ListItem(
-                                headlineContent = {
-                                    Text("${item.stop.address} (${"%.2f".format(item.distanceKm)} km)")
-                                },
-                                modifier = Modifier.clickable {
-                                    selectedDestStop = item.stop
-                                    destinationAddr = item.stop.address
-                                    destinationLatLng = LatLng(item.stop.latitude, item.stop.longitude)
-                                    scope.launch {
-                                        cameraPositionState.animate(
-                                            CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 16f)
-                                        )
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            val closest = nearbyDestStops.minByOrNull { it.distanceKm }!!
-                            selectedDestStop = closest.stop
-                            destinationAddr = closest.stop.address
-                            destinationLatLng = LatLng(closest.stop.latitude, closest.stop.longitude)
-                            scope.launch {
-                                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 16f))
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                    ) {
-                        Text("Select Closest Stop")
-                    }
-                }
-
+            item {
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Reset
-                Button(
-                    onClick = {
-                        pickupAddr = ""; pickupLatLng = null
-                        destinationAddr = ""; destinationLatLng = null
-                        nearbyPickupStops = emptyList(); nearbyDestStops = emptyList()
-                        selectedPickupStop = null; selectedDestStop = null
-                        screenForDest = false; screenForPickup = true
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C), contentColor = Color.White)
-                ) {
-                    Text("Cancel Route")
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Submit
-                Button(
-                    onClick = {
-                        if (selectedPickupStop == null || selectedDestStop == null || seats.toIntOrNull() == null) {
-                            error = "Please fill all fields"
-                            scope.launch { snackbarHostState.showSnackbar(error ?: "") }
-                            return@Button
-                        }
-                        isLoading = true
+                // ==================== PICKUP ====================
+                if (screenForPickup) {
+                    SearchLocation(
+                        label = "পিকআপ",
+                        apiKey = apiKey,
+                        placesClient = placesClient,
+                        geocodingApi = geocodingApi,
+                        coroutineScope = scope,
+                        context = context,
+                        onLocationSelected = { addr, latlng ->
+                            pickupAddr = addr
+                            pickupLatLng = latlng
+                        },
+                        cameraPositionState = cameraPositionState
+                    )
+                    // Map click → approximate pickup
+                    val onMapClick: (LatLng) -> Unit = { latLng ->
+                        pickupLatLng = latLng
+                        cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
                         scope.launch {
-                            val result = AuthRepository().submitTripRequest(
-                                riderId = user.uid,
-                                pickup = selectedPickupStop!!.address,
-                                destination = selectedDestStop!!.address,
-                                seats = seats.toInt(),
-                                pickupLatLng = LatLng(selectedPickupStop!!.latitude, selectedPickupStop!!.longitude),
-                                destinationLatLng = LatLng(selectedDestStop!!.latitude, selectedDestStop!!.longitude),
-                                apiKey = apiKey,
-                                directionsApi = directionsApi
-                            )
-                            isLoading = false
-                            if (result.isSuccess) {
-                                Toast.makeText(context, "Request submitted", Toast.LENGTH_SHORT).show()
-                                navController.navigate("my_requests")
-                            } else {
-                                error = result.exceptionOrNull()?.message ?: "Request failed"
-                                snackbarHostState.showSnackbar(error ?: "")
+                            try {
+                                val geocoder = Geocoder(context)
+                                val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
+                                pickupAddr = if (addresses?.isNotEmpty() == true) {
+                                    addresses[0].getAddressLine(0) ?: latLng.toString()
+                                } else {
+                                    latLng.toString()
+                                }
+                            } catch (e: Exception) {
+                                pickupAddr = "লোকেশন পাওয়া যায়নি"
                             }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading
-                ) {
-                    if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    else Text("Submit Request")
+                    }
+                    GoogleMap(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp),
+                        cameraPositionState = cameraPositionState,
+                        properties = MapProperties(isTrafficEnabled = true),
+                        uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false),
+                        onMapClick = onMapClick
+                    ) {
+                        pickupLatLng?.let {
+                            Marker(state = MarkerState(position = it), title = "Approx Pickup", snippet = pickupAddr)
+                        }
+                        nearbyPickupStops.forEach { item ->
+                            val pos = LatLng(item.stop.latitude, item.stop.longitude)
+                            Marker(
+                                state = MarkerState(position = pos),
+                                title = item.stop.address,
+                                snippet = "%.2f km away".format(item.distanceKm),
+                                icon = BitmapDescriptorFactory.defaultMarker(
+                                    if (selectedPickupStop == item.stop) HUE_GREEN else HUE_BLUE
+                                )
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Fetch nearby pickup stops
+                    if (pickupLatLng != null) {
+                        Button(
+                            onClick = {
+                                isFetchingStops = true
+                                scope.launch {
+                                    nearbyPickupStops = AuthRepository().getNearbyBusStops(pickupLatLng!!, 2.5)
+                                    isFetchingStops = false
+                                }
+                            },
+                            enabled = !isFetchingStops
+                        ) {
+                            if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            else Text("নিকটবর্তী পিকআপ স্টপ খুঁজুন")
+                        }
+                    }
+                    // List of nearby pickup stops
+                    if (nearbyPickupStops.isNotEmpty()) {
+                        Text("Nearby Pickup Stops (2.5 km):")
+                        LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
+                            items(nearbyPickupStops) { item ->
+                                ListItem(
+                                    headlineContent = {
+                                        Text("${item.stop.address} (${"%.2f".format(item.distanceKm)} km)")
+                                    },
+                                    modifier = Modifier.clickable {
+                                        selectedPickupStop = item.stop
+                                        pickupAddr = item.stop.address
+                                        pickupLatLng = LatLng(item.stop.latitude, item.stop.longitude)
+                                        scope.launch {
+                                            cameraPositionState.animate(
+                                                CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 16f)
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        // Auto-select closest
+                        Button(
+                            onClick = {
+                                val closest = nearbyPickupStops.minByOrNull { it.distanceKm }!!
+                                selectedPickupStop = closest.stop
+                                pickupAddr = closest.stop.address
+                                pickupLatLng = LatLng(closest.stop.latitude, closest.stop.longitude)
+                                scope.launch {
+                                    cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(pickupLatLng!!, 16f))
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                        ) {
+                            Text("নিকটতম স্টপ নির্বাচন করুন")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            if (selectedPickupStop == null) {
+                                error = "অনুগ্রহ করে একটি পিকআপ স্টপ নির্বাচন করুন"
+                                scope.launch { snackbarHostState.showSnackbar(error ?: "") }
+                            } else {
+                                screenForPickup = false
+                                screenForDest = true
+                            }
+                        }
+                    ) {
+                        Text("গন্তব্য নির্বাচন করুন")
+                    }
+                }
+                // ==================== DESTINATION ====================
+                if (screenForDest) {
+                    SearchLocation(
+                        label = "গন্তব্য",
+                        apiKey = apiKey,
+                        placesClient = placesClient,
+                        geocodingApi = geocodingApi,
+                        coroutineScope = scope,
+                        context = context,
+                        onLocationSelected = { addr, latlng ->
+                            destinationAddr = addr
+                            destinationLatLng = latlng
+                        },
+                        cameraPositionState = cameraPositionState
+                    )
+                    OutlinedTextField(
+                        value = seats,
+                        onValueChange = { seats = it },
+                        label = { Text("Seats") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("আনুমানিক ভাড়া: ৳$fare")
+                    val onMapClickDest: (LatLng) -> Unit = { latLng ->
+                        destinationLatLng = latLng
+                        cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, cameraPositionState.position.zoom)
+                        scope.launch {
+                            try {
+                                val geocoder = Geocoder(context)
+                                val addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
+                                destinationAddr = if (addresses?.isNotEmpty() == true) {
+                                    addresses[0].getAddressLine(0) ?: latLng.toString()
+                                } else {
+                                    latLng.toString()
+                                }
+                            } catch (e: Exception) {
+                                destinationAddr = "লোকেশন পাওয়া যায়নি"
+                            }
+                        }
+                    }
+                    GoogleMap(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        cameraPositionState = cameraPositionState,
+                        properties = MapProperties(isTrafficEnabled = true),
+                        uiSettings = MapUiSettings(zoomGesturesEnabled = true, zoomControlsEnabled = false),
+                        onMapClick = onMapClickDest
+                    ) {
+                        pickupLatLng?.let {
+                            Marker(state = MarkerState(position = it), title = "Pickup", snippet = pickupAddr)
+                        }
+                        destinationLatLng?.let {
+                            Marker(state = MarkerState(position = it), title = "Approx Dest", snippet = destinationAddr)
+                        }
+                        nearbyDestStops.forEach { item ->
+                            val pos = LatLng(item.stop.latitude, item.stop.longitude)
+                            Marker(
+                                state = MarkerState(position = pos),
+                                title = item.stop.address,
+                                snippet = "%.2f km away".format(item.distanceKm),
+                                icon = BitmapDescriptorFactory.defaultMarker(
+                                    if (selectedDestStop == item.stop) HUE_GREEN else HUE_BLUE
+                                )
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (destinationLatLng != null) {
+                        Button(
+                            onClick = {
+                                isFetchingStops = true
+                                scope.launch {
+                                    nearbyDestStops = AuthRepository().getNearbyBusStops(destinationLatLng!!, 2.5)
+                                    isFetchingStops = false
+                                }
+                            },
+                            enabled = !isFetchingStops
+                        ) {
+                            if (isFetchingStops) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            else Text("নিকটবর্তী গন্তব্য স্টপ খুঁজুন")
+                        }
+                    }
+                    if (nearbyDestStops.isNotEmpty()) {
+                        Text("Nearby Destination Stops (2.5 km):")
+                        LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
+                            items(nearbyDestStops) { item ->
+                                ListItem(
+                                    headlineContent = {
+                                        Text("${item.stop.address} (${"%.2f".format(item.distanceKm)} km)")
+                                    },
+                                    modifier = Modifier.clickable {
+                                        selectedDestStop = item.stop
+                                        destinationAddr = item.stop.address
+                                        destinationLatLng = LatLng(item.stop.latitude, item.stop.longitude)
+                                        scope.launch {
+                                            cameraPositionState.animate(
+                                                CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 16f)
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                val closest = nearbyDestStops.minByOrNull { it.distanceKm }!!
+                                selectedDestStop = closest.stop
+                                destinationAddr = closest.stop.address
+                                destinationLatLng = LatLng(closest.stop.latitude, closest.stop.longitude)
+                                scope.launch {
+                                    cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(destinationLatLng!!, 16f))
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                        ) {
+                            Text("নিকটতম স্টপ নির্বাচন করুন")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Reset
+                    Button(
+                        onClick = {
+                            pickupAddr = ""; pickupLatLng = null
+                            destinationAddr = ""; destinationLatLng = null
+                            nearbyPickupStops = emptyList(); nearbyDestStops = emptyList()
+                            selectedPickupStop = null; selectedDestStop = null
+                            screenForDest = false; screenForPickup = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C), contentColor = Color.White)
+                    ) {
+                        Text("রুট বাতিল করুন")
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Submit
+                    Button(
+                        onClick = {
+                            if (selectedPickupStop == null || selectedDestStop == null || seats.toIntOrNull() == null) {
+                                error = "অনুগ্রহ করে সব ক্ষেত্র পূরণ করুন"
+                                scope.launch { snackbarHostState.showSnackbar(error ?: "") }
+                                return@Button
+                            }
+                            isLoading = true
+                            scope.launch {
+                                val result = AuthRepository().submitTripRequest(
+                                    riderId = user.uid,
+                                    pickup = selectedPickupStop!!.address,
+                                    destination = selectedDestStop!!.address,
+                                    seats = seats.toInt(),
+                                    pickupLatLng = LatLng(selectedPickupStop!!.latitude, selectedPickupStop!!.longitude),
+                                    destinationLatLng = LatLng(selectedDestStop!!.latitude, selectedDestStop!!.longitude),
+                                    apiKey = apiKey,
+                                    directionsApi = directionsApi
+                                )
+                                isLoading = false
+                                if (result.isSuccess) {
+                                    Toast.makeText(context, "রিকোয়েস্ট জমা দেওয়া হয়েছে", Toast.LENGTH_SHORT).show()
+                                    navController.navigate("my_requests")
+                                } else {
+                                    error = result.exceptionOrNull()?.message ?: "রিকোয়েস্ট ব্যর্থ হয়েছে"
+                                    snackbarHostState.showSnackbar(error ?: "")
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    ) {
+                        if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        else Text("রিকোয়েস্ট জমা দিন")
+                    }
+                    Spacer(modifier = Modifier.height(16.dp)) // Ensure bottom padding for scrolling
                 }
             }
         }
