@@ -118,6 +118,9 @@ fun AppNavHost(navController: NavHostController) {
                 preSelectedRole = "Conductor"
             )
         }
+        composable("help") {
+            HelpScreen(navController = navController)
+        }
         composable("user_dashboard") {
             Log.d("AppNavHost", "Navigating to UserDashboard")
             val user = FirebaseAuth.getInstance().currentUser
