@@ -285,6 +285,19 @@ fun ConductorDashboard(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+
+// NEW: Button to view riders for chat
+                Button(
+                    onClick = {
+                        navController.navigate("conductor_chat_list")
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("রাইডারদের সাথে চ্যাট করুন")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // ── SCHEDULE LIST WITH EDIT & DELETE ─────────────────────────────
                 Text("শিডিউল তালিকা", style = MaterialTheme.typography.titleMedium)
                 if (schedules.isEmpty()) {

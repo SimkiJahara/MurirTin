@@ -210,6 +210,33 @@ fun AppNavHost(navController: NavHostController) {
         composable("profile_update") {
             Userprofile_Update(navController = navController)
         }
+        // Add these composable routes to your NavHost in MainActivity.kt
+
+        composable("past_trips") {
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                PastTripsScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+
+        composable("conductor_chat_list") {
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorChatListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
         composable("conductor_list") {
             Log.d("AppNavHost", "Navigating to ConductorListScreen")
             val user = FirebaseAuth.getInstance().currentUser

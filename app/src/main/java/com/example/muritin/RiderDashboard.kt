@@ -33,11 +33,10 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Button for past trips (placeholder for Week 5)
+        // Button for viewing past/completed trips
         Button(
             onClick = {
-                Toast.makeText(context, "পূর্ববর্তী যাত্রা এর তথ্য আসবে", Toast.LENGTH_SHORT).show()
-                // TODO: Implement PastTripsScreen in Week 5
+                navController.navigate("past_trips")
             },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -54,18 +53,6 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("অ্যাকাউন্ট এর তথ্য")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Button for booking tickets
-        Button(
-            onClick = {
-                Toast.makeText(context, "টিকিট বুক করার পর্দা আসবে", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("টিকিট বুক করুন")
         }
 
         Spacer(modifier = Modifier.height(16.dp))

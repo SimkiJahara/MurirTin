@@ -815,4 +815,38 @@ class AuthRepository {
             Result.failure(e)
         }
     }
+
+    // Add these functions to AuthRepository class
+
+    suspend fun getAllRequestsForUser(userId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("riderId")
+                .equalTo(userId)
+                .get().await()
+
+            snapshot.children.mapNotNull { child ->
+                child.getValue(Request::class.java)
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get all requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getAllAcceptedRequestsForConductor(conductorId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("acceptedBy")
+                .equalTo(conductorId)
+                .get().await()
+
+            snapshot.children.mapNotNull { child ->
+                child.getValue(Request::class.java)
+            }.filter { it.status == "Accepted" }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get all accepted requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
 }
