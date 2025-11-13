@@ -3,6 +3,9 @@ package com.example.muritin
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,11 +36,28 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Button for past trips (placeholder for Week 5)
+        // NEW: Help Button
+        OutlinedButton(
+            onClick = {
+                navController.navigate("rider_help")
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                Icons.Filled.Help,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("সহায়তা নির্দেশিকা")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Button for viewing past/completed trips
         Button(
             onClick = {
-                Toast.makeText(context, "পূর্ববর্তী যাত্রা এর তথ্য আসবে", Toast.LENGTH_SHORT).show()
-                // TODO: Implement PastTripsScreen in Week 5
+                navController.navigate("past_trips")
             },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -54,18 +74,6 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("অ্যাকাউন্ট এর তথ্য")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Button for booking tickets
-        Button(
-            onClick = {
-                Toast.makeText(context, "টিকিট বুক করার পর্দা আসবে", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("টিকিট বুক করুন")
         }
 
         Spacer(modifier = Modifier.height(16.dp))

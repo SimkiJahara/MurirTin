@@ -98,8 +98,8 @@ fun AppNavHost(navController: NavHostController) {
             SignUpScreen(
                 navController = navController,
                 onSignUpSuccess = { user ->
-                    Log.d("AppNavHost", "Signup success, navigating to user_dashboard")
-                    navController.navigate("user_dashboard") {
+                    Log.d("AppNavHost", "Signup success, navigating to login")
+                    navController.navigate("login") {
                         popUpTo("signup") { inclusive = true }
                     }
                 }
@@ -117,6 +117,9 @@ fun AppNavHost(navController: NavHostController) {
                 },
                 preSelectedRole = "Conductor"
             )
+        }
+        composable("help") {
+            HelpScreen(navController = navController)
         }
         composable("user_dashboard") {
             Log.d("AppNavHost", "Navigating to UserDashboard")
@@ -210,6 +213,42 @@ fun AppNavHost(navController: NavHostController) {
         composable("profile_update") {
             Userprofile_Update(navController = navController)
         }
+        // Add these composable routes to your NavHost in MainActivity.kt
+
+        composable("past_trips") {
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                PastTripsScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("rider_help") {
+            RiderHelpScreen(navController = navController)
+        }
+        composable("owner_help") {
+            OwnerHelpScreen(navController = navController)
+        }
+        composable("conductor_help") {
+            ConductorHelpScreen(navController = navController)
+        }
+
+        composable("conductor_chat_list") {
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorChatListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
         composable("conductor_list") {
             Log.d("AppNavHost", "Navigating to ConductorListScreen")
             val user = FirebaseAuth.getInstance().currentUser
@@ -279,6 +318,24 @@ fun AppNavHost(navController: NavHostController) {
             } else {
                 LaunchedEffect(Unit) {
                     Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("chat/{requestId}") { backStackEntry ->
+            val requestId = backStackEntry.arguments?.getString("requestId") ?: ""
+            Log.d("AppNavHost", "Opening ChatScreen for requestId = $requestId")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ChatScreen(
+                    navController = navController,
+                    requestId = requestId,
+                    user = user
+                )
+            } else {
+                LaunchedEffect(Unit) {
                     navController.navigate("login") {
                         popUpTo(navController.graph.id) { inclusive = true }
                     }

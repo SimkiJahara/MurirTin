@@ -70,9 +70,9 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation("com.google.maps.android:maps-compose:6.1.1")  // Updated
-
-    // Additional for places and retrofit
+    implementation("com.firebase:geofire-android:3.2.0")
     implementation("com.google.android.libraries.places:places:3.5.0")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.google.firebase:firebase-storage-ktx")
 }

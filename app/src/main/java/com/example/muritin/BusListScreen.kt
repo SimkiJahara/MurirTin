@@ -48,6 +48,8 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                 }
                 return@LaunchedEffect
             }
+            // Clean up expired schedules
+            AuthRepository().cleanExpiredSchedules()
             val snapshot = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/")
                 .getReference("buses")
                 .orderByChild("ownerId")
@@ -106,7 +108,7 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .weight(1f) // Ensures LazyColumn takes available space
+                        .weight(1f)
                 ) {
                     items(buses) { bus ->
                         var assignedConductorId by remember(bus.busId) { mutableStateOf<String?>(null) }
@@ -134,11 +136,13 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                     }
                                 }
                                 Text("অ্যাসাইনড কন্ডাক্টর: ${conductors.find { it.uid == assignedConductorId }?.name ?: assignedConductorId ?: "কোনোটি নেই"}")
-                                Text("শিডিউল তালিকা:")
+                                Text("শিডিউল তালিকা (চলমান এবং আসন্ন):")
                                 schedules[bus.busId]?.forEach { schedule ->
                                     Text(
                                         "তারিখ: ${schedule.date}, শুরুর সময়: ${
                                             SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(schedule.startTime))
+                                        }, শেষের সময়: ${
+                                            SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(schedule.endTime))
                                         }"
                                     )
                                 } ?: Text("কোনো শিডিউল নেই")
