@@ -3,6 +3,9 @@ package com.example.muritin
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +35,24 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
         Text("স্বাগতম, ${user.email}")
 
         Spacer(modifier = Modifier.height(24.dp))
+
+        // NEW: Help Button
+        OutlinedButton(
+            onClick = {
+                navController.navigate("rider_help")
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                Icons.Filled.Help,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("সহায়তা নির্দেশিকা")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Button for viewing past/completed trips
         Button(
