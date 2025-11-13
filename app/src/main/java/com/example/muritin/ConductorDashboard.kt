@@ -12,8 +12,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
@@ -245,6 +247,24 @@ fun ConductorDashboard(
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
+
+
+                OutlinedButton(
+                    onClick = {
+                        navController.navigate("conductor_help")
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Filled.Help,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("সহায়তা নির্দেশিকা")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Assigned Bus
                 if (assignedBus != null) {
