@@ -230,6 +230,9 @@ fun AppNavHost(navController: NavHostController) {
         composable("rider_help") {
             RiderHelpScreen(navController = navController)
         }
+        composable("owner_help") {
+            OwnerHelpScreen(navController = navController)
+        }
 
         composable("conductor_chat_list") {
             val user = FirebaseAuth.getInstance().currentUser
