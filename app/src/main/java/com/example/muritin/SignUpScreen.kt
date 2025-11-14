@@ -4,6 +4,8 @@ import android.util.Log
 import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +30,7 @@ fun SignUpScreen(
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
+    var nid by remember { mutableStateOf("") }
     var age by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -38,6 +41,7 @@ fun SignUpScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var currentUserRole by remember { mutableStateOf<String?>(null) }
     var roleLoading by remember { mutableStateOf(true) }
+    val scrollState = rememberScrollState()
 
     LaunchedEffect(Unit) {
         val currentUser = FirebaseAuth.getInstance().currentUser
@@ -64,6 +68,15 @@ fun SignUpScreen(
         return age.toIntOrNull()?.let { it in 18..100 } ?: false
     }
 
+    fun isValidNID(nid: String): Boolean {
+        // Remove any spaces or dashes
+        val cleanNid = nid.filter { it.isDigit() }
+        if (cleanNid.length != 10 && cleanNid.length != 17) return false   //Length 10(old) or 17(new)
+        if (cleanNid.toLongOrNull() == null) return false
+
+        return true
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -80,6 +93,7 @@ fun SignUpScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
@@ -132,6 +146,16 @@ fun SignUpScreen(
                                 .fillMaxWidth()
                                 .semantics { contentDescription = "বয়স ক্ষেত্র" },
                             isError = !isValidAge(age) && age.isNotBlank()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = nid,
+                            onValueChange = { nid = it },
+                            label = { Text("জাতীয় পরিচয়পত্র নম্বর") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = "এনাইডি ক্ষেত্র" },
+                            isError = !isValidNID(nid) && nid.isNotBlank()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
@@ -245,7 +269,10 @@ fun SignUpScreen(
                                 } else if (!isValidPhone(phone)) {
                                     error = "বৈধ ফোন নম্বর প্রয়োজন (+8801Xxxxxxxxx)"
                                     scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
-                                } else if (!isValidAge(age)) {
+                                } else if (!isValidNID(nid)) {
+                                    error = "এন আইডি ১০ অথবা ১৭ সংখ্যার হতে হবে"
+                                    scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
+                                }else if (!isValidAge(age)) {
                                     error = "বয়স ১৮-১০০ এর মধ্যে হতে হবে"
                                     scope.launch { snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি") }
                                 } else if (!isValidEmail(email)) {
@@ -270,6 +297,7 @@ fun SignUpScreen(
                                             role = role,
                                             name = name,
                                             phone = phone,
+                                            nid = nid,
                                             age = age.toIntOrNull() ?: 0,
                                             ownerPassword = if (preSelectedRole == "Conductor") ownerPassword else null
                                         )

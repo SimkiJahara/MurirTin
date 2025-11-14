@@ -9,6 +9,7 @@ data class User(
     val email: String = "",
     val name: String? = null,
     val phone: String? = null,
+    val nid: String? = null,
     val age: Int? = null,
     val role: String = "Rider",
     val createdAt: Long = 0L,

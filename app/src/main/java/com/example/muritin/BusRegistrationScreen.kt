@@ -140,7 +140,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                     OutlinedTextField(
                         value = number,
                         onValueChange = { number = it },
-                        label = { Text("বাস নম্বর") },
+                        label = { Text("লাইসেন্স নম্বর") },
+                        placeholder = {Text("Gha-1111-22")},
                         modifier = Modifier.fillMaxWidth(),
                         isError = error != null && number.isBlank()
                     )
@@ -148,7 +149,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                     OutlinedTextField(
                         value = fitnessCertificate,
                         onValueChange = { fitnessCertificate = it },
-                        label = { Text("ফিটনেস সার্টিফিকেট") },
+                        label = { Text("ফিটনেস সনদ এর নম্বর") },
+                        placeholder = {Text("1223545555")},
                         modifier = Modifier.fillMaxWidth(),
                         isError = error != null && fitnessCertificate.isBlank()
                     )
@@ -156,7 +158,8 @@ fun BusRegistrationScreen(navController: NavHostController) {
                     OutlinedTextField(
                         value = taxToken,
                         onValueChange = { taxToken = it },
-                        label = { Text("ট্যাক্স টোকেন") },
+                        label = { Text("ট্যাক্স টোকেন এর নম্বর") },
+                        placeholder = {Text("11-22223333")},
                         modifier = Modifier.fillMaxWidth(),
                         isError = error != null && taxToken.isBlank()
                     )
@@ -568,9 +571,6 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             if (destinationAddress.isNotEmpty()) {
                                 Text(text = "গন্তব্য: $destinationAddress", style = MaterialTheme.typography.bodySmall)
                             }
-                            Text("${BusRouteObject.originLoc}")
-                            Text("${BusRouteObject.destinationLoc}")
-                            Text("${BusRouteObject.stopPointsLoc}")
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))

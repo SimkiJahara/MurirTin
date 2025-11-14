@@ -3,7 +3,9 @@ package com.example.muritin
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,12 +36,14 @@ fun Show_Account_Info(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showDelAccDialog by remember { mutableStateOf(false) }
+    var showDelAccDialogOwner by remember { mutableStateOf(false) }
     var showPasswordChangeDialog by remember { mutableStateOf(false) }
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmNewPassword by remember { mutableStateOf("") }
     var passwordChangeLoading by remember { mutableStateOf(false) }
     var passwordChangeError by remember { mutableStateOf<String?>(null) }
+    val scrollState = rememberScrollState()
 
     val user = FirebaseAuth.getInstance().currentUser
     val email = user?.email ?: "No email"
@@ -83,6 +87,7 @@ fun Show_Account_Info(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
@@ -172,17 +177,31 @@ fun Show_Account_Info(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Button: Delete Account
-                Button(
-                    onClick = { showDelAccDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Red,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text("অ্যাকাউন্ট ডিলিট করুন")
+                // Button: Delete Account for Different Roles
+                if (userData?.role == "Rider") {
+                    Button(
+                        onClick = { showDelAccDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Red,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("অ্যাকাউন্ট ডিলিট করুন")
+                    }
+                } else if (userData?.role == "Owner") {
+                    Button(
+                        onClick = { showDelAccDialogOwner = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Red,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("ওউনার অ্যাকাউন্ট ডিলিট করুন")
+                    }
                 }
+
 
                 // Delete Account Dialog
                 if (showDelAccDialog) {
@@ -220,6 +239,48 @@ fun Show_Account_Info(
                         },
                         dismissButton = {
                             TextButton(onClick = { showDelAccDialog = false }) {
+                                Text("না")
+                            }
+                        }
+                    )
+                }
+
+                // Delete Account Dialog for Owner
+                if (showDelAccDialogOwner) {
+                    AlertDialog(
+                        onDismissRequest = { showDelAccDialogOwner = false },
+                        title = { Text("অ্যাকাউন্ট ডিলিট করুন") },
+                        text = { Text("আপনি কি নিশ্চিতভাবে আপনার অ্যাকাউন্ট ডিলিট করতে চান? আপনার সব বাস, কন্ডাক্টর ডিলিট হয়ে যাবে। এই ক্রিয়াটি পূর্বাবস্থায় ফেরানো যাবে না।") },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        try {
+                                            val currentUser = FirebaseAuth.getInstance().currentUser
+                                            if (currentUser != null) {
+                                                val dbResult = AuthRepository().deleteOwnerData(currentUser.uid)
+                                                if (dbResult.isSuccess) {
+                                                    currentUser.delete().await()
+                                                    Toast.makeText(context, "অ্যাকাউন্ট ডিলিট সফল", Toast.LENGTH_SHORT).show()
+                                                    navController.navigate("login") {
+                                                        popUpTo(navController.graph.id) { inclusive = true }
+                                                    }
+                                                } else {
+                                                    scope.launch { snackbarHostState.showSnackbar("ডিলিট ব্যর্থ") }
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            scope.launch { snackbarHostState.showSnackbar("ডিলিট ব্যর্থ: ${e.message}") }
+                                        }
+                                    }
+                                    showDelAccDialogOwner = false
+                                }
+                            ) {
+                                Text("হ্যাঁ")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDelAccDialogOwner = false }) {
                                 Text("না")
                             }
                         }
