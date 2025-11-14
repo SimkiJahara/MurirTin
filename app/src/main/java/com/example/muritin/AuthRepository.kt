@@ -144,40 +144,41 @@ class AuthRepository {
         }
     }
 
-//    suspend fun deleteOwnerData(uid: String): Result<Unit> = try {
-//        //Delete user
-//        database.getReference("users").child(uid).removeValue().await()
-//
-//        //Get all buses owned by this user
-//        val busesSnapshot = database.getReference("buses")
-//            .orderByChild("ownerId")
-//            .equalTo(uid)
-//            .get()
-//            .await()
-//
-//        busesSnapshot.children.forEach { busSnapshot ->
-//            val busId = busSnapshot.key ?: return@forEach
-//
-//            // Delete all "Accepted" requests for this owner's buses
-//            database.getReference("requests").orderByChild("status").equalTo("Accepted").get().await()
-//                .children.forEach { reqSnapshot ->
-//                    val request = reqSnapshot.getValue(Request::class.java)
-//                    if (request?.busId == busId) {
-//                        reqSnapshot.ref.removeValue().await()
-//                    }
-//                }
-//
-//            deleteBus(busId).getOrThrow() // This deletes the bus, bus assignmnet and schedules for this bus
-//        }
-//
-//        //Deleting the conductor's accounts created by this owner
-//        database.getReference("users").orderByChild("ownerId").equalTo(uid).get().await()
-//            .children.forEach { it.ref.removeValue().await() }
-//
-//        Result.success(Unit)
-//    } catch (e: Exception) {
-//        Result.failure(e)
-//    }
+    suspend fun deleteOwnerData(uid: String): Result<Unit> = try {
+
+        //Get all buses owned by this user
+        val busesSnapshot = database.getReference("buses")
+            .orderByChild("ownerId")
+            .equalTo(uid)
+            .get()
+            .await()
+
+        busesSnapshot.children.forEach { busSnapshot ->
+            val busId = busSnapshot.key ?: return@forEach
+
+            // Delete all "Accepted" requests for this owner's buses
+            database.getReference("requests").orderByChild("status").equalTo("Accepted").get().await()
+                .children.forEach { reqSnapshot ->
+                    val request = reqSnapshot.getValue(Request::class.java)
+                    if (request?.busId == busId) {
+                        reqSnapshot.ref.removeValue().await()
+                    }
+                }
+
+            deleteBus(busId).getOrThrow() // This deletes the bus, bus assignmnet and schedules for this bus
+        }
+
+        //Deleting the conductor's accounts created by this owner
+        database.getReference("users").orderByChild("ownerId").equalTo(uid).get().await()
+            .children.forEach { it.ref.removeValue().await() }
+
+        //Delete user
+        database.getReference("users").child(uid).removeValue().await()
+
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
     suspend fun registerBus(
         ownerId: String,
@@ -238,10 +239,10 @@ class AuthRepository {
 
     suspend fun deleteBus(busId: String): Result<Unit> {
         return try {
-            database.getReference("buses").child(busId).removeValue().await()
-            database.getReference("busAssignments").child(busId).removeValue().await()
             database.getReference("schedules").orderByChild("busId").equalTo(busId).get().await()
                 .children.forEach { it.ref.removeValue().await() }
+            database.getReference("busAssignments").child(busId).removeValue().await()
+            database.getReference("buses").child(busId).removeValue().await()
             Log.d("AuthRepository", "Bus deleted: $busId")
             Result.success(Unit)
         } catch (e: Exception) {
