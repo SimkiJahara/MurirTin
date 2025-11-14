@@ -24,6 +24,7 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,12 +37,31 @@ fun ShowAnalyticsReport(
     var isLoading by remember { mutableStateOf(true) }
     val snackbarHostState = remember { SnackbarHostState() }
     var bus: Bus? by remember { mutableStateOf(Bus()) }
+    var userData by remember { mutableStateOf<User?>(null) }
+
+    val user = FirebaseAuth.getInstance().currentUser
+    val uid = user?.uid ?: ""
+
+    // Load user data (including role)
+    LaunchedEffect(uid) {
+        val result = AuthRepository().getUser(uid)
+        if (result.isSuccess) {
+            userData = result.getOrNull()
+            isLoading = false
+        } else {
+            isLoading = false
+        }
+    }
 
     LaunchedEffect(busId) {
         isLoading = true
         try {
             bus = AuthRepository().getBus(busId)
-            dailyReport = AuthRepository().getAnalyticForBus(busId)
+            if(userData?.role == "Owner") {
+                dailyReport = AuthRepository().getAnalyticForBus(busId)
+            } else if (userData?.role == "Conductor"){
+                dailyReport = AuthRepository().getAnalyticForBusConductor(busId)
+            }
         } catch (e: Exception) {
             Log.e("Analytics", "Load report failed: ${e.message}")
         } finally {
@@ -75,6 +95,13 @@ fun ShowAnalyticsReport(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
+            if(userData?.role == "Conductor"){
+                Text(
+                    text = "গত ৩ দিনের রিপোর্ট",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
+            }
 
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))

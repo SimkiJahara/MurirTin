@@ -282,6 +282,13 @@ fun ConductorDashboard(
                                     Text("$stop থেকে $dest: $fare টাকা", style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
+                            Button(
+                                onClick = {
+                                    navController.navigate("analytics_report/${assignedBus!!.busId}")
+                                }
+                            ) {
+                                Text("পরিসংখ্যান রিপোর্ট দেখুন")
+                            }
                         }
                     }
                 } else {

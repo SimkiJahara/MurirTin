@@ -21,6 +21,7 @@ import com.firebase.geofire.GeoFireUtils
 import com.firebase.geofire.GeoLocation
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -250,6 +251,54 @@ class AuthRepository {
             Result.failure(e)
         }
     }
+    suspend fun getAnalyticForBusConductor(busId: String): Map<Date, Pair<Int, Double>> {
+
+        val todayStart = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val threeDaysAgoStart = todayStart - (3 * 24 * 60 * 60 * 1000)
+        val snapshot = try {
+            database.getReference("requests")
+                .orderByChild("status")
+                .equalTo("Accepted")
+                .get()
+                .await()
+        } catch (e: Exception) {
+            println("Firebase error: ${e.message}")
+            return emptyMap()
+        }
+
+        val dailyReport = mutableMapOf<Date, Pair<Int, Double>>()
+
+        snapshot.children.forEach { child ->
+            val req = child.getValue(Request::class.java) ?: return@forEach
+            if (req.busId != busId) return@forEach
+            if (req.acceptedAt <= 0) return@forEach
+
+              if (req.acceptedAt !in threeDaysAgoStart until todayStart) {
+                return@forEach
+            }
+
+            val fare = (req.fare ?: 0).toDouble()
+
+            val dayStart = (req.acceptedAt / 86400000) * 86400000
+            val dayKey = Date(dayStart)
+
+            val (count, income) = dailyReport.getOrDefault(dayKey, 0 to 0.0)
+            dailyReport[dayKey] = (count + 1) to (income + fare)
+        }
+
+        val dhakaFmt = SimpleDateFormat("dd MMM yyyy", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+        }
+
+        return dailyReport.toSortedMap()
+    }
+
     suspend fun getAnalyticForBus(busId: String): Map<Date, Pair<Int, Double>> {
         val currentUser = FirebaseAuth.getInstance().currentUser
             ?: return emptyMap()

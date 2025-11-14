@@ -178,7 +178,7 @@ fun Show_Account_Info(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Button: Delete Account for Different Roles
-                if (userData?.role == "Rider") {
+                if (userData?.role == "Rider" || userData?.role == "Conductor") {
                     Button(
                         onClick = { showDelAccDialog = true },
                         modifier = Modifier.fillMaxWidth(),
