@@ -75,4 +75,6 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.google.firebase:firebase-storage-ktx")
+    //For graph, chart
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
 }

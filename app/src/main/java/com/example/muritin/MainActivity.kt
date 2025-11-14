@@ -18,9 +18,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -280,6 +282,13 @@ fun AppNavHost(navController: NavHostController) {
                     }
                 }
             }
+        }
+        composable(
+            "analytics_report/{busId}",
+            arguments = listOf(navArgument("busId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val busId = backStackEntry.arguments?.getString("busId") ?: ""
+            ShowAnalyticsReport(navController = navController, busId = busId)
         }
         composable("trip_request") {
             Log.d("AppNavHost", "Navigating to TripRequestScreen")

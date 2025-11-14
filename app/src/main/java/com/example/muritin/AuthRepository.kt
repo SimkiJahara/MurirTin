@@ -19,6 +19,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import com.firebase.geofire.GeoFireUtils
 import com.firebase.geofire.GeoLocation
+import java.util.Calendar
 import java.util.Locale
 
 class AuthRepository {
@@ -210,6 +211,46 @@ class AuthRepository {
             Log.e("AuthRepository", "Delete bus failed: ${e.message}", e)
             Result.failure(e)
         }
+    }
+    suspend fun getAnalyticForBus(busId: String): Map<Date, Pair<Int, Double>> {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+            ?: return emptyMap()
+
+        val snapshot = try {
+            database.getReference("requests")
+                .orderByChild("status")
+                .equalTo("Accepted")
+                .get()
+                .await()
+        } catch (e: Exception) {
+            println("Firebase error: ${e.message}")
+            return emptyMap()
+        }
+
+        val dailyReport = mutableMapOf<Date, Pair<Int, Double>>()
+
+        snapshot.children.forEach { child ->
+            val req = child.getValue(Request::class.java) ?: return@forEach
+
+            // Filter by busId in code
+            if (req.busId != busId) return@forEach
+            if (req.acceptedAt <= 0) return@forEach
+
+            val fare = (req.fare ?: 0).toDouble()
+
+            val day = Calendar.getInstance().apply {
+                timeInMillis = req.acceptedAt
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.time
+
+            val (count, income) = dailyReport.getOrDefault(day, 0 to 0.0)
+            dailyReport[day] = (count + 1) to (income + fare)
+        }
+
+        return dailyReport.toSortedMap()
     }
 
     suspend fun getConductorsForOwner(ownerId: String): List<User> {

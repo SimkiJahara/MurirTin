@@ -146,7 +146,14 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                         }"
                                     )
                                 } ?: Text("কোনো শিডিউল নেই")
-                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                    Button(
+                                        onClick = {
+                                            navController.navigate("analytics_report/${bus.busId}")
+                                        }
+                                    ) {
+                                        Text("পরিসংখ্যান রিপোর্ট দেখুন")
+                                    }
                                     Button(
                                         onClick = {
                                             selectedBus = bus
