@@ -170,6 +170,31 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                     ) {
                                         Text("মুছুন")
                                     }
+                                        Button(
+                                            onClick = {
+                                                navController.navigate("bus_ratings/${bus.busId}")
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("মূল্যায়ন দেখুন")
+                                        }
+                                        var busRatings by remember(bus.busId) { mutableStateOf<BusRatings?>(null) }
+
+                                        LaunchedEffect(bus.busId) {
+                                            busRatings = AuthRepository().getBusRatings(bus.busId)
+                                        }
+
+                                        busRatings?.let { ratings ->
+                                            if (ratings.totalRatings > 0) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(vertical = 4.dp)
+                                                ) {
+                                                    Text("রেটিং: ")
+                                                    RatingDisplay(ratings.averageRating, ratings.totalRatings)
+                                                }
+                                            }
+                                        }
 
                                     if (showDeleteBusDialog) {
                                         AlertDialog(

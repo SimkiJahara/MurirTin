@@ -1,6 +1,7 @@
 package com.example.muritin
 
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,13 +28,15 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var showRatingDialog by remember { mutableStateOf(false) }
+    var selectedRequest by remember { mutableStateOf<Request?>(null) }
+    var selectedBus by remember { mutableStateOf<Bus?>(null) }
+    var selectedConductor by remember { mutableStateOf<User?>(null) }
 
-    // Function to fetch all past accepted trips
     suspend fun fetchPastTrips() {
         try {
             Log.d("PastTripsScreen", "Fetching all trips for user ${user.uid}")
             val allUserRequests = AuthRepository().getAllRequestsForUser(user.uid)
-            // Filter only accepted trips
             allRequests = allUserRequests.filter { it.status == "Accepted" }
             isLoading = false
         } catch (e: Exception) {
@@ -108,15 +111,16 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
                     var conductor by remember { mutableStateOf<User?>(null) }
                     var isChatEnabled by remember { mutableStateOf(false) }
                     var scheduleEndTime by remember { mutableStateOf<Long?>(null) }
+                    var canRate by remember { mutableStateOf(false) }
 
-                    LaunchedEffect(request.busId, request.conductorId, request.scheduleId) {
+                    LaunchedEffect(request.busId, request.conductorId, request.scheduleId, request.id) {
                         request.busId?.let { busId ->
                             bus = AuthRepository().getBus(busId)
                         }
                         conductor = AuthRepository().getUser(request.conductorId).getOrNull()
                         isChatEnabled = AuthRepository().isChatEnabled(request.id)
+                        canRate = AuthRepository().canRateTrip(request.id, user.uid)
 
-                        // Get schedule end time for display
                         request.scheduleId?.let { scheduleId ->
                             scheduleEndTime = AuthRepository().getSchedule(scheduleId)?.endTime
                         }
@@ -155,7 +159,6 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
 
                             Text("OTP: ${request.otp ?: "N/A"}")
 
-                            // Show trip completion time
                             scheduleEndTime?.let { endTime ->
                                 val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
                                 Text(
@@ -164,8 +167,7 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
                                     color = MaterialTheme.colorScheme.outline
                                 )
 
-                                // Calculate time remaining for chat
-                                val chatExpiryTime = endTime + 432000000L // 3 days in milliseconds
+                                val chatExpiryTime = endTime + 432000000L
                                 val now = System.currentTimeMillis()
 
                                 if (isChatEnabled) {
@@ -178,9 +180,74 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
                                 }
                             }
 
+                            // Show existing rating if present
+                            request.rating?.let { rating ->
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            "আপনার মূল্যায়ন",
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            Column {
+                                                Text("কন্ডাক্টর:", style = MaterialTheme.typography.bodySmall)
+                                                RatingDisplay(rating.conductorRating)
+                                            }
+                                            Column {
+                                                Text("বাস:", style = MaterialTheme.typography.bodySmall)
+                                                RatingDisplay(rating.busRating)
+                                            }
+                                            Column {
+                                                Text("সামগ্রিক:", style = MaterialTheme.typography.bodySmall)
+                                                RatingDisplay(rating.overallRating)
+                                            }
+                                        }
+                                        if (rating.comment.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                "মন্তব্য: ${rating.comment}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                                        Text(
+                                            "মূল্যায়ন দেওয়া: ${dateFormat.format(Date(rating.timestamp))}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Chat button - available for 3 days after trip ends
+                            // Rating button - show if trip is completed and not rated
+                            if (canRate) {
+                                Button(
+                                    onClick = {
+                                        selectedRequest = request
+                                        selectedBus = bus
+                                        selectedConductor = conductor
+                                        showRatingDialog = true
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiary
+                                    )
+                                ) {
+                                    Text("যাত্রা মূল্যায়ন করুন")
+                                }
+                            }
+
+                            // Chat button
                             if (isChatEnabled) {
                                 Button(
                                     onClick = {
@@ -204,17 +271,36 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
                                 ) {
                                     Text("চ্যাট সময় শেষ")
                                 }
-                                Text(
-                                    "চ্যাট সময় শেষ (৩ দিন পেরিয়ে গেছে)",
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // Rating Dialog
+    if (showRatingDialog && selectedRequest != null) {
+        TripRatingDialog(
+            request = selectedRequest!!,
+            bus = selectedBus,
+            conductor = selectedConductor,
+            onDismiss = {
+                showRatingDialog = false
+                selectedRequest = null
+                selectedBus = null
+                selectedConductor = null
+            },
+            onRatingSubmitted = {
+                showRatingDialog = false
+                Toast.makeText(context, "মূল্যায়ন সফলভাবে জমা হয়েছে", Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    fetchPastTrips()
+                }
+                selectedRequest = null
+                selectedBus = null
+                selectedConductor = null
+            }
+        )
     }
 }

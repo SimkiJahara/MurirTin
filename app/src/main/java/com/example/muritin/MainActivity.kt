@@ -251,6 +251,21 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+        composable(
+            "conductor_ratings/{conductorId}",
+            arguments = listOf(navArgument("conductorId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val conductorId = backStackEntry.arguments?.getString("conductorId") ?: ""
+            ConductorRatingsScreen(navController = navController, conductorId = conductorId)
+        }
+
+        composable(
+            "bus_ratings/{busId}",
+            arguments = listOf(navArgument("busId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val busId = backStackEntry.arguments?.getString("busId") ?: ""
+            BusRatingsScreen(navController = navController, busId = busId)
+        }
         composable("conductor_list") {
             Log.d("AppNavHost", "Navigating to ConductorListScreen")
             val user = FirebaseAuth.getInstance().currentUser
