@@ -146,55 +146,89 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                                         }"
                                     )
                                 } ?: Text("কোনো শিডিউল নেই")
-                                    Column(modifier = Modifier.fillMaxWidth()) {
+
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    // Check if bus has active schedule
+                                    val hasActiveSchedule = schedules[bus.busId]?.any { schedule ->
+                                        val now = System.currentTimeMillis()
+                                        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
+                                        schedule.date == today && schedule.startTime <= now && schedule.endTime >= now
+                                    } ?: false
+
+                                    // Live Location Button (only shown if schedule is active)
+                                    if (hasActiveSchedule) {
+                                        Button(
+                                            onClick = {
+                                                navController.navigate("bus_live_tracking/${bus.busId}")
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.tertiary
+                                            )
+                                        ) {
+                                            Text("🚌 লাইভ লোকেশন দেখুন")
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
+
                                     Button(
                                         onClick = {
                                             navController.navigate("analytics_report/${bus.busId}")
-                                        }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text("পরিসংখ্যান রিপোর্ট দেখুন")
                                     }
+                                    Spacer(modifier = Modifier.height(8.dp))
+
                                     Button(
                                         onClick = {
                                             selectedBus = bus
                                             selectedConductorId = assignedConductorId
                                             showAssignDialog = true
-                                        }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text("কন্ডাক্টর অ্যাসাইন করুন")
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Button(
+                                        onClick = {
+                                            navController.navigate("bus_ratings/${bus.busId}")
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("মূল্যায়ন দেখুন")
+                                    }
+
+                                    var busRatings by remember(bus.busId) { mutableStateOf<BusRatings?>(null) }
+
+                                    LaunchedEffect(bus.busId) {
+                                        busRatings = AuthRepository().getBusRatings(bus.busId)
+                                    }
+
+                                    busRatings?.let { ratings ->
+                                        if (ratings.totalRatings > 0) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(vertical = 4.dp)
+                                            ) {
+                                                Text("রেটিং: ")
+                                                RatingDisplay(ratings.averageRating, ratings.totalRatings)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
                                     Button(
                                         onClick = { showDeleteBusDialog = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text("মুছুন")
                                     }
-                                        Button(
-                                            onClick = {
-                                                navController.navigate("bus_ratings/${bus.busId}")
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text("মূল্যায়ন দেখুন")
-                                        }
-                                        var busRatings by remember(bus.busId) { mutableStateOf<BusRatings?>(null) }
-
-                                        LaunchedEffect(bus.busId) {
-                                            busRatings = AuthRepository().getBusRatings(bus.busId)
-                                        }
-
-                                        busRatings?.let { ratings ->
-                                            if (ratings.totalRatings > 0) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    modifier = Modifier.padding(vertical = 4.dp)
-                                                ) {
-                                                    Text("রেটিং: ")
-                                                    RatingDisplay(ratings.averageRating, ratings.totalRatings)
-                                                }
-                                            }
-                                        }
 
                                     if (showDeleteBusDialog) {
                                         AlertDialog(

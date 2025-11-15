@@ -252,6 +252,22 @@ fun AppNavHost(navController: NavHostController) {
             }
         }
         composable(
+            "bus_live_tracking/{busId}",
+            arguments = listOf(navArgument("busId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val busId = backStackEntry.arguments?.getString("busId") ?: ""
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                BusLiveTrackingScreen(navController = navController, user = user, busId = busId)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable(
             "conductor_ratings/{conductorId}",
             arguments = listOf(navArgument("conductorId") { type = NavType.StringType })
         ) { backStackEntry ->
