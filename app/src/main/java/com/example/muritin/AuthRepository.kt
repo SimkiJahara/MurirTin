@@ -88,6 +88,13 @@ class AuthRepository {
                 auth.signOut()
                 throw Exception("আপনার ইমেইল যাচাই করা হয়নি। দয়া করে আপনার ইমেইল চেক করুন এবং যাচাই লিঙ্কে ক্লিক করুন।")
             }
+            try {
+                //CLean expired schedule and request whenever someone logs in
+                cleanExpiredSchedules()
+                cleanExpiredRequests()
+            } catch (e: Exception) {
+                Log.e("AuthRepository", "Cleanup failed: ${e.message}")
+            }
             val snapshot = database.getReference("users").child(firebaseUser.uid).get().await()
             val user = snapshot.getValue(User::class.java) ?: throw Exception("User data not found")
             Result.success(user)
@@ -532,6 +539,30 @@ class AuthRepository {
         }
     }
 
+    suspend fun cleanExpiredRequests(): Result<Unit> {
+        return try {
+            val currentTime = System.currentTimeMillis()
+            val snapshot = database.getReference("requests").orderByChild("status").equalTo("Pending").get().await()
+            snapshot.children.forEach { child ->
+                val req = child.getValue(Request::class.java) ?: return@forEach
+                if ((currentTime - req.createdAt) > 180000 ) {
+                    child.ref.removeValue().await()
+                    Log.d("AuthRepository", "Removed expired request: ${req.id}")
+                }
+            }
+            val snapshot2 = database.getReference("requests").orderByChild("status").equalTo("Cancelled").get().await()
+            snapshot2.children.forEach { child ->
+                val req = child.getValue(Request::class.java) ?: return@forEach
+                     child.ref.removeValue().await()
+                    Log.d("AuthRepository", "Removed cancelled request: ${req.id}")
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Clean expired requests failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun submitTripRequest(
         riderId: String,
         pickup: String,
@@ -645,67 +676,6 @@ class AuthRepository {
             return emptyList()
         }
     }
-//        return try {
-//            val busId = getBusForConductor(conductorId) ?: return emptyList()
-//            val schedules = getSchedulesForBus(busId)
-//            val now = System.currentTimeMillis()
-//            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
-//            val activeSchedule = schedules.firstOrNull { it.date == today && it.startTime <= now && it.endTime >= now }
-//                ?: return emptyList()
-//            val orderedStops = mutableListOf<String>()
-//            bus.route?.let { route ->
-//                if (activeSchedule.direction == "going") {
-//                    route.originLoc?.address?.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
-//                    route.stopPointsLoc.forEach { stop ->
-//                        stop.address.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
-//                    }
-//                    route.destinationLoc?.address?.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
-//                } else {
-//                    route.destinationLoc?.address?.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
-//                    route.stopPointsLoc.reversed().forEach { stop ->
-//                        stop.address.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
-//                    }
-//                    route.originLoc?.address?.takeIf { it.isNotBlank() }?.let { orderedStops.add(it.trim()) }
-//                }
-//            }
-//            if (orderedStops.size < 2) return emptyList()
-//            val normalizedStops = orderedStops.map { it.lowercase() }
-//            fun norm(s: String) = s.trim().lowercase()
-//            val snapshot = database.getReference("requests")
-//                .orderByChild("status")
-//                .equalTo("Pending")
-//                .get()
-//                .await()
-//            val pending = snapshot.children.mapNotNull { it.getValue(Request::class.java) }
-//            val valid = pending.filter { req ->
-//                val p = norm(req.pickup)
-//                val d = norm(req.destination)
-//                val i1 = normalizedStops.indexOf(p)
-//                val i2 = normalizedStops.indexOf(d)
-//                i1 != -1 && i2 != -1 && i1 < i2
-//            }
-//            val final = valid.filter { req ->
-//                val pickupLatLng = LatLng(req.pickupLatLng!!.lat, req.pickupLatLng.lng)
-//                val origin = "${currentLocation.latitude},${currentLocation.longitude}"
-//                val dest = "${pickupLatLng.latitude},${pickupLatLng.longitude}"
-//                try {
-//                    val resp = withContext(Dispatchers.IO) {
-//                        directionsApi.getRoute(origin, dest, null, apiKey)
-//                    }
-//                    resp.status == "OK" && resp.routes.isNotEmpty() && resp.routes[0].legs[0].duration.value <= 1800
-//                } catch (e: Exception) {
-//                    false
-//                }
-//            }
-//            Log.d(
-//                "ConductorReq",
-//                "Direction=${activeSchedule.direction} → ${final.size} requests"
-//            )
-//            final
-//        } catch (e: Exception) {
-//            Log.e("AuthRepository", "getPendingRequests failed: ${e.message}", e)
-//            emptyList()
-//        }
 
     suspend fun getLLofPickupDestofBusForRider(requestId: String): List<PointLocation> {
         try {

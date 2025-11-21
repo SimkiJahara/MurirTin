@@ -48,8 +48,6 @@ fun BusListScreen(navController: NavHostController, user: FirebaseUser) {
                 }
                 return@LaunchedEffect
             }
-            // Clean up expired schedules
-            AuthRepository().cleanExpiredSchedules()
             val snapshot = FirebaseDatabase.getInstance("https://muritin-78a12-default-rtdb.asia-southeast1.firebasedatabase.app/")
                 .getReference("buses")
                 .orderByChild("ownerId")
