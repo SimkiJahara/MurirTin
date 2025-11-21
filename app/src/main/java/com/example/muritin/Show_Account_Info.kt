@@ -198,7 +198,7 @@ fun Show_Account_Info(
                             contentColor = Color.White
                         )
                     ) {
-                        Text("ওউনার অ্যাকাউন্ট ডিলিট করুন")
+                        Text("অ্যাকাউন্ট ডিলিট করুন")
                     }
                 }
 

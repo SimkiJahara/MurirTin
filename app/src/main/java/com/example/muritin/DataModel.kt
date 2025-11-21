@@ -67,7 +67,8 @@ data class Schedule(
     val endTime: Long = 0L,
     val date: String = "",
     val createdAt: Long = 0L,
-    val direction: String = "going"
+    val direction: String = "going",
+    val tripRoute: BusRoute?= null
 )
 
 
@@ -121,7 +122,8 @@ data class Request(
     val acceptedBy: String = "",
     val estimatedTimeToPickup: Int? = null,
     val acceptedAt: Long = 0L,
-    val rating: TripRating? = null  // NEW: Rating for the trip
+    val rating: TripRating? = null,
+    val requestedRoute: BusRoute? =null
 )
 
 // NEW: Rating model
