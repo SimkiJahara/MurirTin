@@ -31,6 +31,7 @@ fun Userprofile_Update(navController: NavHostController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollState = rememberScrollState()
 
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -38,7 +39,6 @@ fun Userprofile_Update(navController: NavHostController) {
     var isLoading by remember { mutableStateOf(true) }
     var isSaving by remember { mutableStateOf(false) }
 
-    val scrollState = rememberScrollState()
     val user = FirebaseAuth.getInstance().currentUser
     val uid = user?.uid ?: "No UID"
 
@@ -67,364 +67,358 @@ fun Userprofile_Update(navController: NavHostController) {
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundLight)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Header with Gradient
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(Primary, PrimaryLight)
-                        )
-                    )
-                    .padding(top = 40.dp, bottom = 60.dp, start = 16.dp, end = 16.dp)
-            ) {
-                IconButton(
-                    onClick = { navController.navigate("show_account_info") },
-                    modifier = Modifier.align(Alignment.TopStart)
-                ) {
-                    Icon(
-                        Icons.Filled.ArrowBack,
-                        contentDescription = "ফিরে যান",
-                        tint = Color.White
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 40.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(Color.White),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
-                            tint = Primary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "তথ্য পরিবর্তন",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "আপনার প্রোফাইল আপডেট করুন",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.9f)
-                    )
-                }
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = Error,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(12.dp)
+                )
             }
-
-            // Form Content
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundLight)
+                .padding(paddingValues)
+        ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
+                    .fillMaxSize()
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp)
-                    .offset(y = (-40).dp)
             ) {
-                if (isLoading) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                // Header with Gradient
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(Primary, PrimaryLight)
+                            )
+                        )
+                        .padding(top = 40.dp, bottom = 80.dp, start = 16.dp, end = 16.dp)
+                ) {
+                    IconButton(
+                        onClick = { navController.navigate("show_account_info") },
+                        modifier = Modifier.align(Alignment.TopStart)
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowBack,
+                            contentDescription = "ফিরে যান",
+                            tint = Color.White
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 40.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(60.dp),
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(Color.White),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = Primary)
-                        }
-                    }
-                } else {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp)
-                        ) {
-                            Text(
-                                text = "ব্যক্তিগত তথ্য",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(bottom = 20.dp)
-                            )
-
-                            // Name Field
-                            OutlinedTextField(
-                                value = name,
-                                onValueChange = { name = it },
-                                label = { Text("নাম") },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Outlined.Person,
-                                        contentDescription = null,
-                                        tint = Primary
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Primary,
-                                    unfocusedBorderColor = Border,
-                                    focusedLabelColor = Primary
-                                ),
-                                singleLine = true,
-                                isError = name.isBlank()
-                            )
-
-                            if (name.isBlank()) {
-                                Text(
-                                    text = "নাম প্রয়োজন",
-                                    color = Error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Phone Field
-                            OutlinedTextField(
-                                value = phone,
-                                onValueChange = { phone = it },
-                                label = { Text("ফোন নম্বর (+880)") },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Outlined.Phone,
-                                        contentDescription = null,
-                                        tint = Primary
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Primary,
-                                    unfocusedBorderColor = Border,
-                                    focusedLabelColor = Primary
-                                ),
-                                singleLine = true,
-                                isError = phone.isNotBlank() && !isValidPhone(phone)
-                            )
-
-                            if (phone.isNotBlank() && !isValidPhone(phone)) {
-                                Text(
-                                    text = "বৈধ ফোন নম্বর প্রয়োজন (+8801XXXXXXXXX)",
-                                    color = Error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Age Field
-                            OutlinedTextField(
-                                value = age,
-                                onValueChange = { age = it },
-                                label = { Text("বয়স") },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Outlined.Cake,
-                                        contentDescription = null,
-                                        tint = Primary
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Primary,
-                                    unfocusedBorderColor = Border,
-                                    focusedLabelColor = Primary
-                                ),
-                                singleLine = true,
-                                isError = age.isNotBlank() && !isValidAge(age)
-                            )
-
-                            if (age.isNotBlank() && !isValidAge(age)) {
-                                Text(
-                                    text = "বয়স ১৮-১০০ এর মধ্যে হতে হবে",
-                                    color = Error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(24.dp))
-
-                            // Info Card
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Info.copy(alpha = 0.1f)
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Info,
-                                        contentDescription = null,
-                                        tint = Info,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = "ইমেইল পরিবর্তন করা যাবে না",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextSecondary
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Save Button
-                    Button(
-                        onClick = {
-                            when {
-                                name.isBlank() -> {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("নাম প্রয়োজন")
-                                    }
-                                }
-                                !isValidPhone(phone) -> {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("বৈধ ফোন নম্বর প্রয়োজন")
-                                    }
-                                }
-                                !isValidAge(age) -> {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("বয়স ১৮-১০০ এর মধ্যে হতে হবে")
-                                    }
-                                }
-                                else -> {
-                                    isSaving = true
-                                    scope.launch {
-                                        val dbResult = AuthRepository().updateUserProfile(
-                                            uid, name, phone, age.toIntOrNull() ?: 0, user?.email ?: ""
-                                        )
-                                        if (dbResult.isSuccess) {
-                                            Toast.makeText(context, "পরিবর্তন সফল হয়েছে", Toast.LENGTH_SHORT).show()
-                                            navController.navigate("show_account_info")
-                                        } else {
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("পরিবর্তন ব্যর্থ")
-                                            }
-                                        }
-                                        isSaving = false
-                                    }
-                                }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Success
-                        ),
-                        enabled = !isSaving
-                    ) {
-                        if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
                             Icon(
-                                Icons.Filled.Check,
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = Primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "তথ্য পরিবর্তন",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "আপনার প্রোফাইল আপডেট করুন",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+
+                // Form Content with proper spacing
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .offset(y = (-60).dp)
+                ) {
+                    if (isLoading) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(60.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = Primary)
+                            }
+                        }
+                    } else {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp)
+                            ) {
+                                Text(
+                                    text = "ব্যক্তিগত তথ্য",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(bottom = 20.dp)
+                                )
+
+                                // Name Field
+                                OutlinedTextField(
+                                    value = name,
+                                    onValueChange = { name = it },
+                                    label = { Text("নাম") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Outlined.Person,
+                                            contentDescription = null,
+                                            tint = Primary
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary,
+                                        unfocusedBorderColor = Border,
+                                        focusedLabelColor = Primary
+                                    ),
+                                    singleLine = true,
+                                    isError = name.isBlank()
+                                )
+
+                                if (name.isBlank()) {
+                                    Text(
+                                        text = "নাম প্রয়োজন",
+                                        color = Error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // Phone Field
+                                OutlinedTextField(
+                                    value = phone,
+                                    onValueChange = { phone = it },
+                                    label = { Text("ফোন নম্বর (+880)") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Outlined.Phone,
+                                            contentDescription = null,
+                                            tint = Primary
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary,
+                                        unfocusedBorderColor = Border,
+                                        focusedLabelColor = Primary
+                                    ),
+                                    singleLine = true,
+                                    isError = phone.isNotBlank() && !isValidPhone(phone)
+                                )
+
+                                if (phone.isNotBlank() && !isValidPhone(phone)) {
+                                    Text(
+                                        text = "বৈধ ফোন নম্বর প্রয়োজন (+8801XXXXXXXXX)",
+                                        color = Error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // Age Field
+                                OutlinedTextField(
+                                    value = age,
+                                    onValueChange = { age = it },
+                                    label = { Text("বয়স") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Outlined.Cake,
+                                            contentDescription = null,
+                                            tint = Primary
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary,
+                                        unfocusedBorderColor = Border,
+                                        focusedLabelColor = Primary
+                                    ),
+                                    singleLine = true,
+                                    isError = age.isNotBlank() && !isValidAge(age)
+                                )
+
+                                if (age.isNotBlank() && !isValidAge(age)) {
+                                    Text(
+                                        text = "বয়স ১৮-১০০ এর মধ্যে হতে হবে",
+                                        color = Error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                // Info Card
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = Info.copy(alpha = 0.1f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Info,
+                                            contentDescription = null,
+                                            tint = Info,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = "ইমেইল পরিবর্তন করা যাবে না",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Save Button
+                        Button(
+                            onClick = {
+                                when {
+                                    name.isBlank() -> {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("নাম প্রয়োজন")
+                                        }
+                                    }
+                                    !isValidPhone(phone) -> {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("বৈধ ফোন নম্বর প্রয়োজন")
+                                        }
+                                    }
+                                    !isValidAge(age) -> {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("বয়স ১৮-১০০ এর মধ্যে হতে হবে")
+                                        }
+                                    }
+                                    else -> {
+                                        isSaving = true
+                                        scope.launch {
+                                            val dbResult = AuthRepository().updateUserProfile(
+                                                uid, name, phone, age.toIntOrNull() ?: 0, user?.email ?: ""
+                                            )
+                                            if (dbResult.isSuccess) {
+                                                Toast.makeText(context, "পরিবর্তন সফল হয়েছে", Toast.LENGTH_SHORT).show()
+                                                navController.navigate("show_account_info")
+                                            } else {
+                                                scope.launch {
+                                                    snackbarHostState.showSnackbar("পরিবর্তন ব্যর্থ")
+                                                }
+                                            }
+                                            isSaving = false
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Success
+                            ),
+                            enabled = !isSaving
+                        ) {
+                            if (isSaving) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "পরিবর্তন সংরক্ষণ করুন",
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Cancel Button
+                        OutlinedButton(
+                            onClick = { navController.navigate("show_account_info") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = TextSecondary
+                            )
+                        ) {
+                            Icon(
+                                Icons.Outlined.Close,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "পরিবর্তন সংরক্ষণ করুন",
-                                fontWeight = FontWeight.SemiBold,
+                                "পরিবর্তন বাতিল করুন",
+                                fontWeight = FontWeight.Medium,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
+
+                        // Add bottom spacing so content is fully scrollable
+                        Spacer(modifier = Modifier.height(80.dp))
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Cancel Button
-                    OutlinedButton(
-                        onClick = { navController.navigate("show_account_info") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = TextSecondary
-                        ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
-                            width = 1.dp,
-                            brush = Brush.linearGradient(
-                                colors = listOf(Border, Border)
-                            )
-                        )
-                    ) {
-                        Icon(
-                            Icons.Outlined.Close,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "পরিবর্তন বাতিল করুন",
-                            fontWeight = FontWeight.Medium,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(40.dp))
                 }
             }
-        }
-
-        // Snackbar
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-        ) { data ->
-            Snackbar(
-                snackbarData = data,
-                containerColor = Error,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(12.dp)
-            )
         }
     }
 }

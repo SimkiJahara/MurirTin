@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,7 +27,7 @@ fun RiderHelpScreen(navController: NavHostController) {
                 title = { Text("রাইডার সহায়তা নির্দেশিকা") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "ফিরে যান")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "ফিরে যান")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -130,7 +132,7 @@ fun TripRequestHelpContent() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.Warning,
             title = "গুরুত্বপূর্ণ নোট",
             steps = listOf(
@@ -152,7 +154,7 @@ fun MyRequestsHelpContent() {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.List,
             title = "আমার রিকোয়েস্ট পেজ",
             steps = listOf(
@@ -189,7 +191,7 @@ fun MyRequestsHelpContent() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.Cancel,
             title = "রিকোয়েস্ট বাতিল করা",
             steps = listOf(
@@ -202,7 +204,7 @@ fun MyRequestsHelpContent() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.Info,
             title = "Accepted রিকোয়েস্টে পাবেন",
             steps = listOf(
@@ -224,7 +226,7 @@ fun LiveTrackingHelpContent() {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.Navigation,
             title = "লাইভ ট্র্যাকিং ব্যবহার করা",
             steps = listOf(
@@ -270,7 +272,7 @@ fun LiveTrackingHelpContent() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.PhoneAndroid,
             title = "OTP এর গুরুত্ব",
             steps = listOf(
@@ -318,7 +320,7 @@ fun PastTripsHelpContent() {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.History,
             title = "পূর্ববর্তী যাত্রা দেখা",
             steps = listOf(
@@ -355,12 +357,12 @@ fun PastTripsHelpContent() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.Schedule,
             title = "চ্যাট সময়সীমা",
             steps = listOf(
-                "• যাত্রা শেষের পর ৩ দিন (৭২ ঘণ্টা) চ্যাট করতে পারবেন",
-                "• বাকি কত ঘণ্টা আছে তা দেখানো হবে",
+                "• যাত্রা শেষের পর ৩ দিন (৭২ ঘন্টা) চ্যাট করতে পারবেন",
+                "• বাকি কত ঘন্টা আছে তা দেখানো হবে",
                 "• ৩ দিন পরে চ্যাট বোতাম নিষ্ক্রিয় হয়ে যাবে",
                 "• প্রয়োজনে এই সময়ের মধ্যে যোগাযোগ করুন"
             )
@@ -376,8 +378,8 @@ fun ChatHelpContent() {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        HelpSection(
-            icon = Icons.Filled.Chat,
+        RiderHelpSection(
+            icon = Icons.AutoMirrored.Filled.Chat,
             title = "কন্ডাক্টরের সাথে চ্যাট",
             steps = listOf(
                 "১. 'আমার রিকোয়েস্ট' বা 'পূর্ববর্তী যাত্রা' থেকে চ্যাট করুন",
@@ -422,7 +424,7 @@ fun ChatHelpContent() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        HelpSection(
+        RiderHelpSection(
             icon = Icons.Filled.Info,
             title = "চ্যাট সম্পর্কে জানুন",
             steps = listOf(

@@ -5,6 +5,7 @@ import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,6 +14,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.outlined.Help
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -246,17 +250,29 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Forgot Password
-                    Text(
-                        text = "পাসওয়ার্ড ভুলে গেছেন?",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Primary,
+                    // Forgot Password - Updated Style
+                    Row(
                         modifier = Modifier
                             .align(Alignment.End)
+                            .clip(RoundedCornerShape(8.dp))
                             .clickable { showResetDialog = true }
-                            .padding(vertical = 4.dp),
-                        fontWeight = FontWeight.Medium
-                    )
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.LockReset,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = Primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "পাসওয়ার্ড ভুলে গেছেন?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -307,7 +323,7 @@ fun LoginScreen(
                             )
                         } else {
                             Icon(
-                                Icons.Filled.Login,
+                                Icons.AutoMirrored.Filled.Login,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -327,14 +343,14 @@ fun LoginScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Divider(modifier = Modifier.weight(1f), color = Divider)
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = Divider)
                         Text(
                             text = "অথবা",
                             modifier = Modifier.padding(horizontal = 16.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
-                        Divider(modifier = Modifier.weight(1f), color = Divider)
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = Divider)
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -349,7 +365,8 @@ fun LoginScreen(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = Primary
                         ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                        border = BorderStroke(
+                            width = 1.5.dp,
                             brush = Brush.horizontalGradient(
                                 colors = listOf(Primary, PrimaryLight)
                             )
@@ -370,21 +387,59 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Help Button
-                    TextButton(
-                        onClick = { navController.navigate("help") },
-                        modifier = Modifier.fillMaxWidth()
+                    // Help Button - Updated Style
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { navController.navigate("help") },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = PrimaryLight.copy(alpha = 0.1f)
+                        )
                     ) {
-                        Icon(
-                            Icons.Outlined.Help,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "সাহায্য প্রয়োজন?",
-                            fontWeight = FontWeight.Medium
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Primary.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.Help,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = Primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "সাহায্য প্রয়োজন?",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Primary,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "লগইন ও নিবন্ধন সহায়তা",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                            Icon(
+                                Icons.Filled.ChevronRight,
+                                contentDescription = null,
+                                tint = Primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -408,50 +463,105 @@ fun LoginScreen(
         }
     }
 
-    // Password Reset Dialog
+    // Password Reset Dialog - Updated Modern Style
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = Color.White,
             icon = {
-                Icon(
-                    Icons.Outlined.MailOutline,
-                    contentDescription = null,
-                    tint = Primary,
-                    modifier = Modifier.size(32.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Primary.copy(alpha = 0.2f),
+                                    PrimaryLight.copy(alpha = 0.1f)
+                                )
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Outlined.LockReset,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             },
             title = {
                 Text(
                     "পাসওয়ার্ড রিসেট করুন",
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             },
             text = {
-                Column {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = "আপনার ইমেইল ঠিকানা দিন। আমরা পাসওয়ার্ড রিসেট লিংক পাঠাবো।",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
                     OutlinedTextField(
                         value = resetEmail,
-                        onValueChange = { resetEmail = it },
+                        onValueChange = {
+                            resetEmail = it
+                            resetError = null
+                        },
                         label = { Text("ইমেইল") },
                         leadingIcon = {
-                            Icon(Icons.Outlined.Email, contentDescription = null)
+                            Icon(
+                                Icons.Outlined.Email,
+                                contentDescription = null,
+                                tint = Primary
+                            )
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        isError = resetEmail.isNotBlank() && !isValidEmail(resetEmail)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Primary,
+                            unfocusedBorderColor = Border,
+                            focusedLabelColor = Primary
+                        ),
+                        isError = resetEmail.isNotBlank() && !isValidEmail(resetEmail),
+                        singleLine = true
                     )
                     if (resetError != null) {
-                        Text(
-                            text = resetError ?: "",
-                            color = Error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Error.copy(alpha = 0.1f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = Error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = resetError ?: "",
+                                    color = Error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
                     }
                 }
             },
@@ -484,7 +594,9 @@ fun LoginScreen(
                         }
                     },
                     enabled = !resetLoading,
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    modifier = Modifier.height(48.dp)
                 ) {
                     if (resetLoading) {
                         CircularProgressIndicator(
@@ -493,19 +605,28 @@ fun LoginScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("পাঠান")
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("পাঠান", fontWeight = FontWeight.SemiBold)
                     }
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { showResetDialog = false },
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("বাতিল")
+                    Text(
+                        "বাতিল",
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
-            },
-            shape = RoundedCornerShape(20.dp)
+            }
         )
     }
 }
