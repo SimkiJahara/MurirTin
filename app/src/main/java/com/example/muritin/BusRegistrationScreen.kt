@@ -1,4 +1,4 @@
- package com.example.muritin
+package com.example.muritin
 
 import android.location.Geocoder
 import android.util.Log
@@ -788,4 +788,3 @@ fun BusRegistrationScreen(navController: NavHostController) {
         ) // End of AlertDialog
     } // End of if (showFareDialog)
 } // End of BusRegistrationScreen
-
