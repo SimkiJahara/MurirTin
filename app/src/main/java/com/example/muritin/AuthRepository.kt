@@ -1,6 +1,8 @@
 package com.example.muritin
 
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.snap
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.EmailAuthProvider
@@ -153,42 +155,93 @@ class AuthRepository {
         }
     }
 
-    suspend fun deleteOwnerData(uid: String): Result<Unit> = try {
+    suspend fun deleteOwnerData(uid: String): Result<Unit> {
+        return try {
 
-        //Get all buses owned by this user
-        val busesSnapshot = database.getReference("buses")
-            .orderByChild("ownerId")
-            .equalTo(uid)
-            .get()
-            .await()
+            //Get all buses owned by this user
+            val busesSnapshot = database.getReference("buses")
+                .orderByChild("ownerId")
+                .equalTo(uid)
+                .get()
+                .await()
 
-        busesSnapshot.children.forEach { busSnapshot ->
-            val busId = busSnapshot.key ?: return@forEach
+            busesSnapshot.children.forEach { busSnapshot ->
+                val busId = busSnapshot.key ?: return@forEach
 
-            // Delete all "Accepted" requests for this owner's buses
-            database.getReference("requests").orderByChild("status").equalTo("Accepted").get().await()
-                .children.forEach { reqSnapshot ->
-                    val request = reqSnapshot.getValue(Request::class.java)
-                    if (request?.busId == busId) {
-                        reqSnapshot.ref.removeValue().await()
+                // Delete all "Accepted" requests for this owner's buses
+                database.getReference("requests").orderByChild("status").equalTo("Accepted").get()
+                    .await()
+                    .children.forEach { reqSnapshot ->
+                        val request = reqSnapshot.getValue(Request::class.java)
+                        if (request?.busId == busId) {
+                            reqSnapshot.ref.removeValue().await()
+                        }
                     }
-                }
 
-            deleteBus(busId).getOrThrow() // This deletes the bus, bus assignmnet and schedules for this bus
+                deleteBus(busId).getOrThrow() // This deletes the bus, bus assignmnet and schedules for this bus
+            }
+
+            //Delete user
+            database.getReference("users").child(uid).removeValue().await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
-
-        //Deleting the conductor's accounts created by this owner
-//        database.getReference("users").orderByChild("ownerId").equalTo(uid).get().await()
-//            .children.forEach { it.ref.removeValue().await() }
-        //Doesn't work. Cannot delete data of conductor from Authentication
-
-        //Delete user
-        database.getReference("users").child(uid).removeValue().await()
-
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Result.failure(e)
     }
+
+    suspend fun deleteConductorData(uid: String): Result<Unit> {
+
+        return try {
+
+            val currentTime = System.currentTimeMillis()
+            val snapshotSchedule = database.getReference("schedules").orderByChild("conductorId").equalTo(uid).get().await()
+
+            //Cannot remove schedule if any schedule is running now, if not remove future schedules
+            for (childSnapshot in snapshotSchedule.children) {
+                val schedule = childSnapshot.getValue(Schedule::class.java)
+                if (schedule != null && schedule.startTime < currentTime && schedule.endTime >currentTime) {
+                    return Result.failure(Exception("Can't delete account, a trip schedule is running now"))
+                }
+                if (schedule != null && schedule.startTime > currentTime) {
+                    childSnapshot.ref.removeValue().await()
+                }
+            }
+
+            //Removing location of this conductor
+            database.getReference("conductorLocations").child(uid).removeValue().await()
+
+            //Removing/Replacing requests accepted by this conductor?? Confused!!
+//            val snapshot = database.getReference("requests").orderByChild("conductorId").equalTo(uid).get().await()
+//
+//            if (snapshot.exists()) {
+//                val updates = mapOf<String, Any>(
+//                    "acceptedAt"   to 0L,
+//                    "acceptedBy"   to "",
+//                    "busId"        to "",
+//                    "conductorId"  to "",
+//                    "otp"          to "",
+//                    "status"       to "Pending"
+//                )
+//
+//                for (child in snapshot.children) {
+//                    child.ref.updateChildren(updates).await()
+//                }
+//            }
+
+            //Remove this conductor from assigned bus
+            database.getReference("busAssignments").orderByChild("conductorId").equalTo(uid).get().await()
+                .children.forEach { it.ref.removeValue().await() }
+
+            //Delete user
+            database.getReference("users").child(uid).removeValue().await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
 
     suspend fun registerBus(
         ownerId: String,
@@ -261,7 +314,6 @@ class AuthRepository {
         }
     }
     suspend fun getAnalyticForBusConductor(busId: String): Map<Date, Pair<Int, Double>> {
-
         val todayStart = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -287,10 +339,7 @@ class AuthRepository {
             val req = child.getValue(Request::class.java) ?: return@forEach
             if (req.busId != busId) return@forEach
             if (req.acceptedAt <= 0) return@forEach
-
-              if (req.acceptedAt !in threeDaysAgoStart until todayStart) {
-                return@forEach
-            }
+            if (req.acceptedAt !in threeDaysAgoStart until todayStart) return@forEach
 
             val fare = (req.fare ?: 0).toDouble()
 
@@ -307,7 +356,6 @@ class AuthRepository {
 
         return dailyReport.toSortedMap()
     }
-
     suspend fun getAnalyticForBus(busId: String): Map<Date, Pair<Int, Double>> {
         val currentUser = FirebaseAuth.getInstance().currentUser
             ?: return emptyMap()
@@ -527,7 +575,7 @@ class AuthRepository {
             val snapshot = database.getReference("schedules").get().await()
             snapshot.children.forEach { child ->
                 val schedule = child.getValue(Schedule::class.java) ?: return@forEach
-                if (schedule.endTime < currentTime) {
+                if ((currentTime - schedule.endTime) > 259200000 ) {    //Remove schedule after 5 days
                     child.ref.removeValue().await()
                     Log.d("AuthRepository", "Removed expired schedule: ${schedule.scheduleId}")
                 }

@@ -42,6 +42,7 @@ fun Show_Account_Info(navController: NavHostController) {
 
     var showDelAccDialog by remember { mutableStateOf(false) }
     var showDelAccDialogOwner by remember { mutableStateOf(false) }
+    var showDelAccDialogConductor by remember { mutableStateOf(false) }
     var showPasswordChangeDialog by remember { mutableStateOf(false) }
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
@@ -302,6 +303,8 @@ fun Show_Account_Info(navController: NavHostController) {
                         onClick = {
                             if (userData?.role == "Owner") {
                                 showDelAccDialogOwner = true
+//                            } else if (userData?.role == "Conductor"){
+//                                showDelAccDialogConductor = true
                             } else {
                                 showDelAccDialog = true
                             }
@@ -390,6 +393,40 @@ fun Show_Account_Info(navController: NavHostController) {
                 showDelAccDialogOwner = false
             },
             onDismiss = { showDelAccDialogOwner = false }
+        )
+    }
+
+    if (showDelAccDialogConductor) {
+        ModernAlertDialog(
+            icon = Icons.Outlined.Delete,
+            iconColor = Error,
+            title = "অ্যাকাউন্ট ডিলিট করুন",
+            message = "আপনি কি নিশ্চিতভাবে আপনার অ্যাকাউন্ট ডিলিট করতে চান? আপনার বাসের শিডিউল, অ্যাক্সেপ্ট করা রিকোয়েস্ট ডিলিট হয়ে যাবে। এই ক্রিয়াটি পূর্বাবস্থায় ফেরানো যাবে না।",
+            confirmText = "হ্যাঁ",
+            dismissText = "না",
+            onConfirm = {
+                scope.launch {
+                    try {
+                        val currentUser = FirebaseAuth.getInstance().currentUser
+                        if (currentUser != null) {
+                            val dbResult = AuthRepository().deleteConductorData(currentUser.uid)
+                            if (dbResult.isSuccess) {
+                                currentUser.delete().await()
+                                Toast.makeText(context, "অ্যাকাউন্ট ডিলিট সফল", Toast.LENGTH_SHORT).show()
+                                navController.navigate("login") {
+                                    popUpTo(navController.graph.id) { inclusive = true }
+                                }
+                            } else {
+                                scope.launch { snackbarHostState.showSnackbar("ডিলিট ব্যর্থ") }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        scope.launch { snackbarHostState.showSnackbar("ডিলিট ব্যর্থ: ${e.message}") }
+                    }
+                }
+                showDelAccDialogConductor = false
+            },
+            onDismiss = { showDelAccDialogConductor = false }
         )
     }
 
