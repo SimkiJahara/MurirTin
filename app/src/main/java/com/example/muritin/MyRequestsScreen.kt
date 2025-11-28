@@ -111,6 +111,8 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
                     }
 
                     Card(modifier = Modifier.padding(8.dp)) {
+                        Text("রিকোয়েস্ট কোনো কন্ডাক্টর অ্যাক্সেপ্ট না করলে ৩ মিনিটের মধ্যে ডিলিট হয়ে যাবে !!", color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(12.dp))
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("স্ট্যাটাস: ${request.status}")
                             Text("পিকআপ: ${request.pickup}")

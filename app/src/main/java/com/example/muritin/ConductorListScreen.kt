@@ -101,13 +101,48 @@ fun ConductorListScreen(navController: NavHostController, user: FirebaseUser) {
                                 .padding(vertical = 8.dp),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp)
-                            ) {
+//                            Column(
+//                                modifier = Modifier.padding(16.dp)
+//                            ) {
+//                                Text("নাম: ${conductor.name ?: "N/A"}")
+//                                Text("ইমেইল: ${conductor.email}")
+//                                Text("ফোন: ${conductor.phone ?: "N/A"}")
+//                                Text("বয়স: ${conductor.age ?: "N/A"}")
+//                            }
+                            var conductorRatings by remember(conductor.uid) { mutableStateOf<ConductorRatings?>(null) }
+
+                            LaunchedEffect(conductor.uid) {
+                                conductorRatings = AuthRepository().getConductorRatings(conductor.uid)
+                            }
+
+                            Column(modifier = Modifier.padding(16.dp)) {
                                 Text("নাম: ${conductor.name ?: "N/A"}")
                                 Text("ইমেইল: ${conductor.email}")
                                 Text("ফোন: ${conductor.phone ?: "N/A"}")
                                 Text("বয়স: ${conductor.age ?: "N/A"}")
+
+                                conductorRatings?.let { ratings ->
+                                    if (ratings.totalRatings > 0) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(top = 8.dp)
+                                        ) {
+                                            Text("রেটিং: ")
+                                            RatingDisplay(ratings.averageRating, ratings.totalRatings)
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        navController.navigate("conductor_ratings/${conductor.uid}")
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("বিস্তারিত মূল্যায়ন দেখুন")
+                                }
                             }
                         }
                     }

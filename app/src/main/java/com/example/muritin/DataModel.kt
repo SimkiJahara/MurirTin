@@ -9,6 +9,7 @@ data class User(
     val email: String = "",
     val name: String? = null,
     val phone: String? = null,
+    val nid: String? = null,
     val age: Int? = null,
     val role: String = "Rider",
     val createdAt: Long = 0L,
@@ -66,32 +67,10 @@ data class Schedule(
     val endTime: Long = 0L,
     val date: String = "",
     val createdAt: Long = 0L,
-    val direction: String = "going"
+    val direction: String = "going",
+    val tripRoute: BusRoute?= null
 )
 
-@Serializable
-data class Request(
-    val id: String = "",
-    val riderId: String = "",
-    val busId: String? = null,
-    val scheduleId: String? = null,
-    val pickup: String = "",
-    val destination: String = "",
-    val pickupLatLng: LatLngData? = null,
-    val destinationLatLng: LatLngData? = null,
-    var pickupGeoHash: String = "",
-    var destinationGeoHash: String = "",
-    val seats: Int = 1,
-    val fare: Int = 0,
-    val status: String = "Pending",
-    val conductorId: String = "",
-    val otp: String? = null,
-    val preBookDate: String? = null,
-    val createdAt: Long = 0L,
-    val acceptedBy: String = "",
-    val estimatedTimeToPickup: Int? = null,
-    val acceptedAt: Long = 0L  // NEW: Timestamp when request was accepted
-)
 
 @Serializable
 data class LatLngData(
@@ -117,6 +96,76 @@ data class Message(
 data class StopWithDistance(
     val stop: PointLocation,
     val distanceKm: Double
+)
+
+
+
+@Serializable
+data class Request(
+    val id: String = "",
+    val riderId: String = "",
+    val busId: String? = null,
+    val scheduleId: String? = null,
+    val pickup: String = "",
+    val destination: String = "",
+    val pickupLatLng: LatLngData? = null,
+    val destinationLatLng: LatLngData? = null,
+    var pickupGeoHash: String = "",
+    var destinationGeoHash: String = "",
+    val seats: Int = 1,
+    val fare: Int = 0,
+    val status: String = "Pending",
+    val conductorId: String = "",
+    val otp: String? = null,
+    val preBookDate: String? = null,
+    val createdAt: Long = 0L,
+    val acceptedBy: String = "",
+    val estimatedTimeToPickup: Int? = null,
+    val acceptedAt: Long = 0L,
+    val rating: TripRating? = null,
+    val requestedRoute: BusRoute? =null
+)
+
+// NEW: Rating model
+@Serializable
+data class TripRating(
+    val conductorRating: Float = 0f,      // Rating for conductor (1-5)
+    val busRating: Float = 0f,            // Rating for bus (1-5)
+    val overallRating: Float = 0f,        // Overall trip rating (1-5)
+    val comment: String = "",              // Rider's comment
+    val timestamp: Long = 0L,              // When rating was submitted
+    val riderId: String = ""               // Who submitted the rating
+)
+
+// NEW: Aggregated ratings for conductor
+@Serializable
+data class ConductorRatings(
+    val conductorId: String = "",
+    val totalRatings: Int = 0,
+    val averageRating: Float = 0f,
+    val totalTrips: Int = 0,
+    val reviews: List<ReviewSummary> = emptyList()
+)
+
+// NEW: Aggregated ratings for bus
+@Serializable
+data class BusRatings(
+    val busId: String = "",
+    val totalRatings: Int = 0,
+    val averageRating: Float = 0f,
+    val totalTrips: Int = 0,
+    val reviews: List<ReviewSummary> = emptyList()
+)
+
+// NEW: Summary of a review for display
+@Serializable
+data class ReviewSummary(
+    val requestId: String = "",
+    val riderName: String = "",
+    val rating: Float = 0f,
+    val comment: String = "",
+    val timestamp: Long = 0L,
+    val route: String = ""  // e.g., "Mirpur to Uttara"
 )
 
 

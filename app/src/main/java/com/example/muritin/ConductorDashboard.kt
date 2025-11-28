@@ -282,6 +282,13 @@ fun ConductorDashboard(
                                     Text("$stop থেকে $dest: $fare টাকা", style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
+                            Button(
+                                onClick = {
+                                    navController.navigate("analytics_report/${assignedBus!!.busId}")
+                                }
+                            ) {
+                                Text("পরিসংখ্যান রিপোর্ট দেখুন")
+                            }
                         }
                     }
                 } else {
@@ -521,6 +528,7 @@ fun ConductorDashboard(
             onConfirm = { date, start, end, dir ->
                 scope.launch {
                     try {
+                        AuthRepository()
                         val startMs = parseTime(date, start)
                         val endMs = parseTime(date, end)
                         if (endMs <= startMs) throw Exception("শেষের সময় শুরুর পরে হতে হবে")
