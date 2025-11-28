@@ -238,11 +238,34 @@ fun AppNavHost(navController: NavHostController) {
         composable("conductor_help") {
             ConductorHelpScreen(navController = navController)
         }
-
         composable("conductor_chat_list") {
             val user = FirebaseAuth.getInstance().currentUser
             if (user != null) {
                 ConductorChatListScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("conductor_schedule_page"){
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorSchedule(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
+        composable("conductor_assignedbus_info"){
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorBusInfo(navController = navController, user = user)
             } else {
                 LaunchedEffect(Unit) {
                     navController.navigate("login") {
