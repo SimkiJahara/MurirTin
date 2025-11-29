@@ -125,7 +125,7 @@ fun ConductorBusInfo(navController: NavHostController, user: FirebaseUser) {
                             colors = listOf(Primary, PrimaryLight)
                         )
                     )
-                    .padding(top = 40.dp, bottom = 60.dp, start = 16.dp, end = 16.dp)
+                    .padding(top = 30.dp, bottom = 20.dp, start = 16.dp, end = 16.dp)
             ) {
                 IconButton(
                     onClick = { navController.navigate("conductor_dashboard") },
