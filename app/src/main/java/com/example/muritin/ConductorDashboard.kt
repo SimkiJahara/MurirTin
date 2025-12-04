@@ -66,7 +66,11 @@ import com.example.muritin.ui.theme.RouteOrange
 import com.example.muritin.ui.theme.RoutePurple
 import com.example.muritin.ui.theme.TextPrimary
 import com.example.muritin.ui.theme.TextSecondary
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
@@ -101,9 +105,10 @@ fun ConductorDashboard(
     var isLoading by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var isInActiveSchedule by remember { mutableStateOf(false) }
+    var locationCallback by remember { mutableStateOf<LocationCallback?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
-
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
     val apiKey = context.getString(R.string.map_api_key)
@@ -134,7 +139,75 @@ fun ConductorDashboard(
         }
     }
 
-    // ── REFRESH FUNCTION ─────────────────────────────────────────────────────
+    // ── CHECK IF IN ACTIVE SCHEDULE ──────────────────────────────────────────────
+    suspend fun checkActiveSchedule(): Boolean {
+        return try {
+            val now = System.currentTimeMillis()
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
+            val schedules = AuthRepository().getSchedulesForConductor(user.uid)
+            val activeSchedule = schedules.firstOrNull {
+                it.date == today && it.startTime <= now && it.endTime >= now
+            }
+            activeSchedule != null
+        } catch (e: Exception) {
+            Log.e("ConductorDashboard", "Check active schedule failed: ${e.message}", e)
+            false
+        }
+    }
+
+    // ── START LOCATION UPDATES ────────────────────────────────────────────────────
+    fun startLocationUpdates() {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            return
+        }
+
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            10000L // Update every 10 seconds
+        ).apply {
+            setMinUpdateIntervalMillis(5000L) // Fastest update: 5 seconds
+            setMaxUpdateDelayMillis(15000L)
+        }.build()
+
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                locationResult.lastLocation?.let { location ->
+                    val newLocation = LatLng(location.latitude, location.longitude)
+                    currentLocation = newLocation
+
+                    // Update location in Firebase
+                    scope.launch {
+                        try {
+                            AuthRepository().updateConductorLocation(user.uid, newLocation)
+                            Log.d("ConductorDashboard", "Location updated: ${newLocation.latitude}, ${newLocation.longitude}")
+                        } catch (e: Exception) {
+                            Log.e("ConductorDashboard", "Failed to update location: ${e.message}", e)
+                        }
+                    }
+                }
+            }
+        }
+
+        locationCallback = callback
+        fusedLocationClient.requestLocationUpdates(locationRequest, callback, null)
+        Log.d("ConductorDashboard", "Location updates started")
+    }
+
+    // ── STOP LOCATION UPDATES ─────────────────────────────────────────────────────
+    fun stopLocationUpdates() {
+        locationCallback?.let { callback ->
+            fusedLocationClient.removeLocationUpdates(callback)
+            locationCallback = null
+            Log.d("ConductorDashboard", "Location updates stopped")
+        }
+    }
+
+    // ── REFRESH FUNCTION ──────────────────────────────────────────────────────────
     suspend fun refreshData() {
         isRefreshing = true
         try {
@@ -154,6 +227,22 @@ fun ConductorDashboard(
                 assignedBus = null
             }
 
+            // Check if conductor is in active schedule
+            val inActiveSchedule = checkActiveSchedule()
+
+            if (inActiveSchedule != isInActiveSchedule) {
+                isInActiveSchedule = inActiveSchedule
+
+                if (inActiveSchedule) {
+                    // Start location updates when schedule becomes active
+                    startLocationUpdates()
+                    Toast.makeText(context, "শিডিউল শুরু - লোকেশন ট্র্যাকিং চালু", Toast.LENGTH_SHORT).show()
+                } else {
+                    // Stop location updates when schedule ends
+                    stopLocationUpdates()
+                }
+            }
+
             if (ContextCompat.checkSelfPermission(
                     context,
                     Manifest.permission.ACCESS_FINE_LOCATION
@@ -162,7 +251,7 @@ fun ConductorDashboard(
                 val location = fusedLocationClient.lastLocation.await()
                 if (location != null) {
                     currentLocation = LatLng(location.latitude, location.longitude)
-                    if (assignedBus != null) {
+                    if (assignedBus != null && isInActiveSchedule) {
                         pendingRequests = AuthRepository().getPendingRequestsForConductor(
                             conductorId = user.uid,
                             currentLocation = currentLocation!!,
@@ -191,20 +280,27 @@ fun ConductorDashboard(
         }
     }
 
-    // ── INITIAL LOAD ───────────────────────────────────────────────────────
+    // ── INITIAL LOAD ──────────────────────────────────────────────────────────────
     LaunchedEffect(user.uid) {
         isLoading = true
         refreshData()
         isLoading = false
     }
 
-    // ── AUTO-REFRESH EVERY 15 SECONDS ─────────────────────────────────────
+    // ── AUTO-REFRESH EVERY 15 SECONDS ─────────────────────────────────────────────
     LaunchedEffect(Unit) {
         while (true) {
             delay(15_000) // 15 seconds
             if (!isRefreshing) {
                 refreshData()
             }
+        }
+    }
+
+    // ── CLEANUP ON DISPOSE ────────────────────────────────────────────────────────
+    DisposableEffect(Unit) {
+        onDispose {
+            stopLocationUpdates()
         }
     }
 
@@ -321,7 +417,38 @@ fun ConductorDashboard(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Location Tracking Status
+                        if (isInActiveSchedule) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = RouteGreen.copy(alpha = 0.2f)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.DirectionsBus,
+                                        contentDescription = null,
+                                        tint = RouteGreen,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        "সক্রিয় যাত্রা - লোকেশন ট্র্যাকিং চালু",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
 
                         // Quick Stats Row
                         Row(
@@ -330,13 +457,13 @@ fun ConductorDashboard(
                         ) {
                             OwnerStatCard(
                                 icon = Icons.Outlined.DirectionsBus,
-                                label = "মোট পেন্ডিং রিকোয়েস্ট",
+                                label = "মোট পেন্ডিং রিকোয়েস্ট",
                                 value = pendingReqCount.toString(),
                                 modifier = Modifier.weight(1f)
                             )
                             OwnerStatCard(
                                 icon = Icons.Outlined.Person,
-                                label = "মোট অ্যাক্সেপ্ট করা রিকোয়েস্ট",
+                                label = "মোট অ্যাক্সেপ্ট করা রিকোয়েস্ট",
                                 value = acceptedReqCount.toString(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -355,11 +482,39 @@ fun ConductorDashboard(
                 ) {
                     // Bus Management Card
                     ManagementSectionCard(
-                        title = "পেন্ডিং রিকোয়েস্ট",
+                        title = "পেন্ডিং রিকোয়েস্ট",
                         icon = Icons.Filled.People,
                         iconColor = RouteBlue
                     ) {
-                        if (pendingRequests.isEmpty()) {
+                        if (!isInActiveSchedule) {
+                            // Not in active schedule
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        Icons.Filled.Schedule,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp),
+                                        tint = TextSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "কোনো সক্রিয় শিডিউল নেই",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextSecondary
+                                    )
+                                    Text(
+                                        text = "যাত্রা শুরু করলে রিকোয়েস্ট দেখা যাবে",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                        } else if (pendingRequests.isEmpty()) {
                             // Empty State
                             Box(
                                 modifier = Modifier
@@ -368,7 +523,7 @@ fun ConductorDashboard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "কোনো পেন্ডিং রিকোয়েস্ট নেই",
+                                    text = "কোনো পেন্ডিং রিকোয়েস্ট নেই",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = TextSecondary
                                 )
@@ -380,9 +535,7 @@ fun ConductorDashboard(
                                     .heightIn(max = 260.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-
                                 items(pendingRequests) { request ->
-
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -515,7 +668,8 @@ fun ConductorDashboard(
     if (showLogoutDialog) {
         OwnerLogoutDialog(
             onConfirm = {
-                Log.d("OwnerDashboard", "Logging out")
+                Log.d("ConductorDashboard", "Logging out")
+                stopLocationUpdates()
                 Toast.makeText(context, "লগআউট সফল", Toast.LENGTH_SHORT).show()
                 onLogout()
                 showLogoutDialog = false
@@ -524,4 +678,3 @@ fun ConductorDashboard(
         )
     }
 }
-
