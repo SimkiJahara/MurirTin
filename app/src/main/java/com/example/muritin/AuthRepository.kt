@@ -1458,4 +1458,440 @@ class AuthRepository {
             false
         }
     }
+
+    suspend fun verifyOtpAndBoardRider(
+        requestId: String,
+        enteredOtp: String,
+        conductorId: String
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Verifying OTP for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.otp != enteredOtp) {
+                throw Exception("ভুল OTP। আবার চেষ্টা করুন।")
+            }
+
+            val currentTime = System.currentTimeMillis()
+            val rideStatus = RideStatus(
+                otpVerified = true,
+                otpVerifiedAt = currentTime,
+                inBusTravelling = true,
+                boardedAt = currentTime
+            )
+
+            requestRef.child("rideStatus").setValue(rideStatus).await()
+
+            Log.d("AuthRepository", "OTP verified, rider boarded successfully")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "OTP verification failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun requestEarlyExit(
+        requestId: String,
+        riderId: String,
+        earlyExitStop: String,
+        earlyExitLatLng: LatLngData
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Requesting early exit for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.riderId != riderId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("আপনি এখনো বাসে উঠেননি")
+            }
+
+            val updates = mapOf(
+                "rideStatus/earlyExitRequested" to true,
+                "rideStatus/earlyExitRequestedAt" to System.currentTimeMillis(),
+                "rideStatus/earlyExitStop" to earlyExitStop,
+                "rideStatus/earlyExitLatLng" to earlyExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Early exit requested successfully")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Early exit request failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Request late exit (beyond original destination)
+     */
+    suspend fun requestLateExit(
+        requestId: String,
+        riderId: String,
+        lateExitStop: String,
+        lateExitLatLng: LatLngData
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Requesting late exit for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.riderId != riderId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("আপনি এখনো বাসে উঠেননি")
+            }
+
+            val updates = mapOf(
+                "rideStatus/lateExitRequested" to true,
+                "rideStatus/lateExitStop" to lateExitStop,
+                "rideStatus/lateExitLatLng" to lateExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Late exit requested successfully")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Late exit request failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Rider confirms arrival at destination
+     */
+    suspend fun confirmRiderArrival(
+        requestId: String,
+        riderId: String
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Rider confirming arrival for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.riderId != riderId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("আপনি এখনো বাসে উঠেননি")
+            }
+
+            val currentTime = System.currentTimeMillis()
+            val updates = mutableMapOf<String, Any>(
+                "rideStatus/riderArrivedConfirmed" to true,
+                "rideStatus/riderArrivedAt" to currentTime
+            )
+
+            // If conductor also confirmed, mark trip as completed
+            if (request.rideStatus?.conductorArrivedConfirmed == true &&
+                request.rideStatus.fareCollected == true) {
+                updates["rideStatus/tripCompleted"] = true
+                updates["rideStatus/tripCompletedAt"] = currentTime
+                updates["status"] = "Completed"
+            }
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Rider arrival confirmed")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Rider arrival confirmation failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Conductor confirms rider arrival and fare collection
+     */
+    suspend fun confirmConductorArrivalAndFare(
+        requestId: String,
+        conductorId: String,
+        fareCollected: Boolean = true
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Conductor confirming arrival for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("যাত্রী এখনো বাসে উঠেননি")
+            }
+
+            val currentTime = System.currentTimeMillis()
+            val updates = mutableMapOf<String, Any>(
+                "rideStatus/conductorArrivedConfirmed" to true,
+                "rideStatus/conductorArrivedAt" to currentTime,
+                "rideStatus/fareCollected" to fareCollected,
+                "rideStatus/fareCollectedAt" to currentTime
+            )
+
+            // If rider also confirmed, mark trip as completed
+            if (request.rideStatus?.riderArrivedConfirmed == true && fareCollected) {
+                updates["rideStatus/tripCompleted"] = true
+                updates["rideStatus/tripCompletedAt"] = currentTime
+                updates["status"] = "Completed"
+            }
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Conductor confirmed arrival and fare")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Conductor confirmation failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371 // Radius of Earth in kilometers
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
+    }
+
+    suspend fun calculateAndUpdateFare(
+        requestId: String,
+        actualDestination: String,
+        actualDestinationLatLng: LatLngData,
+        busId: String
+    ): Result<Int> {
+        return try {
+            Log.d("AuthRepository", "Calculating fare for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val requestSnapshot = requestRef.get().await()
+
+            if (!requestSnapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = requestSnapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            // Get bus fare structure
+            val busRef = database.getReference("buses").child(busId)
+            val busSnapshot = busRef.get().await()
+
+            if (!busSnapshot.exists()) {
+                throw Exception("বাসের তথ্য পাওয়া যায়নি")
+            }
+
+            val bus = busSnapshot.getValue(Bus::class.java)
+                ?: throw Exception("বাসের ডেটা পড়তে ব্যর্থ")
+
+            // Try to get exact fare from bus fare structure first
+            val exactFare = try {
+                bus.fares[request.pickup]?.get(actualDestination)
+            } catch (e: Exception) {
+                null
+            }
+
+            val actualFare = if (exactFare != null) {
+                // Use predefined fare if available
+                exactFare * request.seats
+            } else {
+                // Calculate fare based on distance
+                val pickupLat = request.pickupLatLng?.lat ?: 0.0
+                val pickupLng = request.pickupLatLng?.lng ?: 0.0
+                val destLat = actualDestinationLatLng.lat
+                val destLng = actualDestinationLatLng.lng
+
+                val distance = calculateDistance(pickupLat, pickupLng, destLat, destLng)
+
+                // Base fare: 10 taka per km, minimum 20 taka
+                val baseFare = (distance * 10).toInt().coerceAtLeast(20)
+                baseFare * request.seats
+            }
+
+            // Update fare in request
+            val updates = mapOf(
+                "rideStatus/actualFare" to actualFare
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Fare calculated: $actualFare (was: ${request.fare})")
+            Result.success(actualFare)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Fare calculation failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun approveEarlyExit(
+        requestId: String,
+        conductorId: String
+    ): Result<Unit> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.earlyExitRequested != true) {
+                throw Exception("যাত্রী আগাম নামার অনুরোধ করেননি")
+            }
+
+            // Calculate new fare based on early exit location
+            val earlyExitLatLng = request.rideStatus.earlyExitLatLng
+                ?: throw Exception("আগাম নামার স্থান পাওয়া যায়নি")
+
+            val fareResult = calculateAndUpdateFare(
+                requestId,
+                request.rideStatus.earlyExitStop ?: "",
+                earlyExitLatLng,
+                request.busId ?: ""
+            )
+
+            if (fareResult.isFailure) {
+                throw fareResult.exceptionOrNull() ?: Exception("ভাড়া গণনা ব্যর্থ")
+            }
+
+            // Mark early exit as approved by updating destination
+            val updates = mapOf(
+                "destination" to request.rideStatus.earlyExitStop,
+                "destinationLatLng" to earlyExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Early exit approved with new fare: ${fareResult.getOrNull()}")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Early exit approval failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun approveLateExit(
+        requestId: String,
+        conductorId: String
+    ): Result<Unit> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.lateExitRequested != true) {
+                throw Exception("যাত্রী দেরিতে নামার অনুরোধ করেননি")
+            }
+
+            // Calculate new fare based on late exit location
+            val lateExitLatLng = request.rideStatus.lateExitLatLng
+                ?: throw Exception("দেরিতে নামার স্থান পাওয়া যায়নি")
+
+            val fareResult = calculateAndUpdateFare(
+                requestId,
+                request.rideStatus.lateExitStop ?: "",
+                lateExitLatLng,
+                request.busId ?: ""
+            )
+
+            if (fareResult.isFailure) {
+                throw fareResult.exceptionOrNull() ?: Exception("ভাড়া গণনা ব্যর্থ")
+            }
+
+            // Mark late exit as approved by updating destination
+            val updates = mapOf(
+                "destination" to request.rideStatus.lateExitStop,
+                "destinationLatLng" to lateExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Late exit approved with new fare: ${fareResult.getOrNull()}")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Late exit approval failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }
