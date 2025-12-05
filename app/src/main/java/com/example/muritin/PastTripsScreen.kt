@@ -46,10 +46,13 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
         try {
             Log.d("PastTripsScreen", "Fetching all trips for user ${user.uid}")
             val allUserRequests = AuthRepository().getAllRequestsForUser(user.uid)
-            allRequests = allUserRequests.filter { it.status == "Accepted" }
+            // Sort by acceptedAt in descending order (newest first)
+            allRequests = allUserRequests
+                .filter { it.status == "Accepted" }
+                .sortedByDescending { it.acceptedAt }
             isLoading = false
         } catch (e: Exception) {
-            error = "ট্রিপ পুনর্দ্ধারে ত্রুটি: ${e.message}"
+            error = "ট্রিপ পুনরুদ্ধারে ত্রুটি: ${e.message}"
             isLoading = false
             scope.launch {
                 snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
@@ -440,7 +443,7 @@ fun PastTripCard(
                         DetailRow(
                             icon = Icons.Outlined.Chat,
                             label = "চ্যাট উপলব্ধ",
-                            value = "আর $hoursLeft ঘণ্টা"
+                            value = "আর $hoursLeft ঘন্টা"
                         )
                     }
                 }

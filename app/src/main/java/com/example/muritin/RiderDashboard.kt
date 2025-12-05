@@ -40,11 +40,34 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
     var userData by remember { mutableStateOf<User?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var activeTripsCount by remember { mutableStateOf(0) }
+    var totalTripsCount by remember { mutableStateOf(0) }
 
-    // Load user data
+    // Load user data and trip counts
     LaunchedEffect(user.uid) {
         val result = AuthRepository().getUser(user.uid)
         userData = result.getOrNull()
+
+        // Get trip counts
+        try {
+            val allRequests = AuthRepository().getAllRequestsForUser(user.uid)
+            val acceptedRequests = allRequests.filter { it.status == "Accepted" }
+
+            // Total trips = all accepted trips
+            totalTripsCount = acceptedRequests.size
+
+            // Active trips = trips with schedules that haven't ended yet
+            val currentTime = System.currentTimeMillis()
+            activeTripsCount = acceptedRequests.count { request ->
+                request.scheduleId?.let { scheduleId ->
+                    val schedule = AuthRepository().getSchedule(scheduleId)
+                    schedule != null && schedule.endTime >= currentTime
+                } ?: false
+            }
+        } catch (e: Exception) {
+            Log.e("RiderDashboard", "Failed to fetch trip counts: ${e.message}")
+        }
+
         isLoading = false
     }
 
@@ -129,13 +152,13 @@ fun RiderDashboard(navController: NavHostController, user: FirebaseUser, onLogou
                         QuickStatCard(
                             icon = Icons.Outlined.DirectionsBus,
                             label = "সক্রিয় যাত্রা",
-                            value = "০",
+                            value = activeTripsCount.toString(),
                             modifier = Modifier.weight(1f)
                         )
                         QuickStatCard(
                             icon = Icons.Outlined.History,
                             label = "মোট যাত্রা",
-                            value = "০",
+                            value = totalTripsCount.toString(),
                             modifier = Modifier.weight(1f)
                         )
                     }

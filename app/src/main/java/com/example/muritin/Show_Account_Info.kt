@@ -154,7 +154,7 @@ fun Show_Account_Info(navController: NavHostController) {
                     .weight(1f)
                     .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp)
-                    .offset(y = (-60).dp)
+                    .padding(top = 20.dp)
             ) {
                 if (isLoading) {
                     Card(
