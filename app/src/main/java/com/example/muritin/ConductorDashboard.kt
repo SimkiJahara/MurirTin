@@ -603,6 +603,13 @@ fun ConductorDashboard(
                             onClick = { navController.navigate("conductor_schedule_page") },
                             iconColor = RouteOrange
                         )
+                        ManagementActionButton(
+                            icon = Icons.Outlined.Group,
+                            title = "গৃহীত রিকোয়েস্ট দেখুন",
+                            subtitle = "বোর্ডিং ও ড্রপ-অফ পরিচালনা",
+                            onClick = { navController.navigate("conductor_accepted_requests") },
+                            iconColor = RouteGreen
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
@@ -623,7 +630,7 @@ fun ConductorDashboard(
                         FeatureCard(
                             icon = Icons.AutoMirrored.Outlined.Message,
                             title = "রাইডারের সাথে চ্যাট",
-                            onClick = { navController.navigate("show_account_info") },
+                            onClick = { navController.navigate("conductor_chat_list") },
                             modifier = Modifier.weight(1f),
                             iconColor = RoutePurple
                         )

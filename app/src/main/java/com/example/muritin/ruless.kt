@@ -902,5 +902,128 @@ after implementing chat message
 }
 
 
+
+
+
+
+
+
+
+
+{
+  "rules": {
+    "users": {
+      ".indexOn": ["ownerId"],
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'Owner'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || (root.child('users').child(auth.uid).child('role').val() == 'Owner' && data.child('ownerId').val() == auth.uid))",
+        ".write": "auth != null && (auth.uid == $uid || (root.child('users').child(auth.uid).child('role').val() == 'Owner' && newData.child('role').val() == 'Conductor'))",
+        ".validate": "newData.hasChildren(['email', 'name', 'phone', 'nid', 'age', 'role', 'createdAt'])",
+        "phone": {
+          ".validate": "newData.val().matches(/^(\\+8801|01)[3-9]\\d{8}$/)"
+        },
+        "age": {
+          ".validate": "newData.isNumber() && newData.val() >= 18 && newData.val() <= 100"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/)"
+        },
+        "role": {
+          ".validate": "newData.isString() && (newData.val() == 'Rider' || newData.val() == 'Conductor' || newData.val() == 'Owner')"
+        },
+        "ownerId": {
+          ".validate": "newData.val() == null || (newData.isString() && root.child('users').child(newData.val()).child('role').val() == 'Owner')"
+        }
+      }
+    },
+    "buses": {
+      ".indexOn": ["ownerId", "busId"],
+      ".read": "auth != null",
+      "$busId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (newData.child('ownerId').val() == auth.uid || (data.child('ownerId').val() == auth.uid && !newData.exists()))",
+        ".validate": "newData.hasChildren(['busId', 'ownerId', 'name', 'number', 'fitnessCertificate', 'taxToken', 'stops', 'route', 'fares', 'createdAt'])",
+        "fares": {
+          "$stop": {
+            ".validate": "$stop.matches(/^[A-Za-z0-9 ]+$/) && newData.hasChildren()",
+            "$dest": {
+              ".validate": "$dest.matches(/^[A-Za-z0-9 ]+$/) && newData.isNumber() && newData.val() >= 0"
+            }
+          }
+        },
+        "route": {
+          ".validate": "newData.child('originLoc').val() !== null && newData.child('destinationLoc').val() !== null"
+        }
+      }
+    },
+    "busAssignments": {
+      ".indexOn": ["conductorId"],
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() == 'Owner' || (query.orderByChild == 'conductorId' && query.equalTo == auth.uid))",
+      "$busId": {
+        ".read": "auth != null && (root.child('buses').child($busId).child('ownerId').val() == auth.uid || root.child('busAssignments').child($busId).child('conductorId').val() == auth.uid)",
+        ".write": "auth != null && root.child('buses').child($busId).child('ownerId').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'Conductor'",
+        ".validate": "newData.hasChild('conductorId') && newData.child('conductorId').isString()"
+      }
+    },
+    "schedules": {
+      ".indexOn": ["busId", "conductorId", "startTime", "endTime"],
+      ".read": "auth != null",
+      "$scheduleId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['busId', 'conductorId', 'startTime', 'endTime', 'date', 'createdAt', 'direction', 'tripRoute']) && newData.child('startTime').isNumber() && newData.child('endTime').isNumber() && newData.child('date').isString() && newData.child('createdAt').isNumber() && newData.child('direction').isString() && (newData.child('direction').val() == 'going' || newData.child('direction').val() == 'returning')"
+      }
+    },
+    "requests": {
+      ".indexOn": ["status", "riderId", "acceptedBy", "busId", "conductorId"],
+      ".read": "auth != null",
+      "$id": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "((newData.child('status').val() == 'Cancelled' && data.child('status').val() == 'Pending' && newData.child('riderId').val() == data.child('riderId').val()) || (newData.hasChildren(['id', 'riderId', 'pickup', 'destination', 'pickupLatLng', 'destinationLatLng', 'seats', 'fare', 'status', 'createdAt', 'requestedRoute']) && (newData.child('status').val() == 'Pending' || newData.hasChild('busId')) && (!newData.hasChild('busId') || newData.child('busId').isString()) && newData.child('pickup').isString() && newData.child('destination').isString() && newData.child('pickupLatLng').hasChildren(['lat', 'lng']) && newData.child('destinationLatLng').hasChildren(['lat', 'lng']) && newData.child('seats').isNumber() && newData.child('seats').val() > 0 && newData.child('fare').isNumber() && newData.child('fare').val() >= 0 && newData.child('status').isString() && (newData.child('status').val() == 'Pending' || newData.child('status').val() == 'Accepted' || newData.child('status').val() == 'Cancelled') && (!newData.child('otp').exists() || newData.child('otp').isString()) && (!newData.child('conductorId').exists() || newData.child('conductorId').isString()) && (!newData.child('acceptedBy').exists() || newData.child('acceptedBy').isString()) && (!newData.child('scheduleId').exists() || newData.child('scheduleId').isString()) && (!newData.child('acceptedAt').exists() || newData.child('acceptedAt').isNumber())))",
+        "rating": {
+          ".read": "auth != null",
+          ".write": "auth != null && data.parent().child('riderId').val() == auth.uid && data.parent().child('status').val() == 'Accepted' && !data.exists() && newData.hasChildren(['conductorRating', 'busRating', 'overallRating', 'comment', 'timestamp', 'riderId']) && newData.child('riderId').val() == auth.uid",
+          ".validate": "newData.child('conductorRating').isNumber() && newData.child('conductorRating').val() >= 1 && newData.child('conductorRating').val() <= 5 && newData.child('busRating').isNumber() && newData.child('busRating').val() >= 1 && newData.child('busRating').val() <= 5 && newData.child('overallRating').isNumber() && newData.child('overallRating').val() >= 1 && newData.child('overallRating').val() <= 5 && newData.child('comment').isString() && newData.child('timestamp').isNumber() && newData.child('riderId').isString()"
+        }
+      }
+    },
+    "conductorLocations": {
+      ".indexOn": ["timestamp", "conductorId"],
+      "$conductorId": {
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() == 'Rider' || auth.uid == $conductorId || root.child('users').child($conductorId).child('ownerId').val() == auth.uid)",
+        ".write": "auth != null && auth.uid == $conductorId",
+        ".validate": "newData.hasChildren(['lat', 'lng', 'timestamp']) && newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('timestamp').isNumber()"
+      }
+    },
+    "messages": {
+      "$requestId": {
+        ".read": "auth != null && root.child('requests').child($requestId).child('status').val() == 'Accepted' && (root.child('requests').child($requestId).child('riderId').val() == auth.uid || root.child('requests').child($requestId).child('conductorId').val() == auth.uid) && now <= root.child('schedules').child(root.child('requests').child($requestId).child('scheduleId').val()).child('endTime').val() + 432000000",
+        ".write": "false",
+        "messages": {
+          "$messageId": {
+            ".write": "auth != null && root.child('requests').child($requestId).child('status').val() == 'Accepted' && (root.child('requests').child($requestId).child('riderId').val() == auth.uid || root.child('requests').child($requestId).child('conductorId').val() == auth.uid) && newData.child('senderId').val() == auth.uid && now <= root.child('schedules').child(root.child('requests').child($requestId).child('scheduleId').val()).child('endTime').val() + 432000000",
+            ".validate": "newData.hasChildren(['senderId', 'text', 'timestamp']) && newData.child('senderId').isString() && newData.child('text').isString() && newData.child('timestamp').isNumber()"
+          }
+        }
+      }
+    },
+    "conductorRatings": {
+      ".indexOn": ["conductorId"],
+      "$conductorId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "busRatings": {
+      ".indexOn": ["busId"],
+      "$busId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}
+
  */
 }

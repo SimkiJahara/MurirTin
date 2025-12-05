@@ -297,7 +297,18 @@ fun AppNavHost(navController: NavHostController) {
             val conductorId = backStackEntry.arguments?.getString("conductorId") ?: ""
             ConductorRatingsScreen(navController = navController, conductorId = conductorId)
         }
-
+        composable("conductor_accepted_requests") {
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                ConductorAcceptedRequestsScreen(navController = navController, user = user)
+            } else {
+                LaunchedEffect(Unit) {
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
         composable(
             "bus_ratings/{busId}",
             arguments = listOf(navArgument("busId") { type = NavType.StringType })
