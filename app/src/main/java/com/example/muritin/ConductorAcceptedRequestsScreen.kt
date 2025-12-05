@@ -50,18 +50,30 @@ fun ConductorAcceptedRequestsScreen(
     // Function to load accepted requests
     suspend fun loadAcceptedRequests() {
         try {
+            Log.d("ConductorAcceptedRequests", "Loading accepted requests for conductor: ${user.uid}")
             val requests = AuthRepository().getAcceptedRequestsForConductor(user.uid)
-            acceptedRequests = requests
+            Log.d("ConductorAcceptedRequests", "Found ${requests.size} accepted requests")
 
-            // Load rider data for each request
+            // Load rider data for each request BEFORE setting acceptedRequests
             val riderMap = mutableMapOf<String, User>()
             requests.forEach { request ->
-                val riderResult = AuthRepository().getUser(request.riderId)
-                riderResult.getOrNull()?.let { rider ->
-                    riderMap[request.riderId] = rider
+                Log.d("ConductorAcceptedRequests", "Loading rider data for riderId: ${request.riderId}")
+                try {
+                    val riderResult = AuthRepository().getUser(request.riderId)
+                    riderResult.getOrNull()?.let { rider ->
+                        Log.d("ConductorAcceptedRequests", "Loaded rider: ${rider.name}, phone: ${rider.phone}")
+                        riderMap[request.riderId] = rider
+                    } ?: Log.e("ConductorAcceptedRequests", "Failed to load rider data for ${request.riderId}: result was null")
+                } catch (e: Exception) {
+                    Log.e("ConductorAcceptedRequests", "Exception loading rider ${request.riderId}: ${e.message}", e)
                 }
             }
+
+            // Update state together
             riderDataMap = riderMap
+            acceptedRequests = requests
+
+            Log.d("ConductorAcceptedRequests", "Total rider data loaded: ${riderMap.size} for ${requests.size} requests")
             error = null
         } catch (e: Exception) {
             error = "ডেটা লোড করতে ব্যর্থ: ${e.message}"
@@ -238,6 +250,7 @@ fun ConductorAcceptedRequestsScreen(
 
                         items(acceptedRequests) { request ->
                             val rider = riderDataMap[request.riderId]
+                            Log.d("ConductorAcceptedRequests", "Rendering card for request ${request.id}, riderId: ${request.riderId}, rider found: ${rider != null}, rider name: ${rider?.name}, rider phone: ${rider?.phone}")
                             AcceptedRequestCard(
                                 request = request,
                                 rider = rider,
@@ -264,7 +277,6 @@ fun ConductorAcceptedRequestsScreen(
     // OTP Verification Dialog
     if (showOtpDialog && selectedRequest != null) {
         OtpVerificationDialog(
-            request = selectedRequest!!,
             enteredOtp = enteredOtp,
             onOtpChange = { enteredOtp = it },
             onDismiss = {
@@ -364,7 +376,7 @@ fun AcceptedRequestCard(
             InfoRow(
                 icon = Icons.Filled.Phone,
                 label = "ফোন নম্বর",
-                value = rider?.phone ?: "N/A",
+                value = rider?.phone ?: "লোড হচ্ছে...",
                 iconColor = RouteOrange
             )
 
@@ -532,7 +544,6 @@ fun InfoChip(
 
 @Composable
 fun OtpVerificationDialog(
-    request: Request,
     enteredOtp: String,
     onOtpChange: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -610,15 +621,6 @@ fun OtpVerificationDialog(
                         focusedBorderColor = RouteGreen,
                         focusedLabelColor = RouteGreen
                     )
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Show expected OTP for debugging (remove in production)
-                Text(
-                    text = "সঠিক OTP: ${request.otp}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary.copy(alpha = 0.6f)
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
