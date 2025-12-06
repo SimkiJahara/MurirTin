@@ -42,7 +42,7 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
     var selectedBus by remember { mutableStateOf<Bus?>(null) }
     var selectedConductor by remember { mutableStateOf<User?>(null) }
 
-    // Replace the fetchPastTrips function in PastTripsScreen.kt with this version with debug logging:
+
 
     suspend fun fetchPastTrips() {
         try {
