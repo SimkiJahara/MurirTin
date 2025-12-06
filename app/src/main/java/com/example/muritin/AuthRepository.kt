@@ -811,32 +811,6 @@ class AuthRepository {
             Result.failure(e)
         }
     }
-
-    suspend fun getRequestsForUser(userId: String): List<Request> {
-        return try {
-            val currentTime = System.currentTimeMillis()
-            val snapshot = database.getReference("requests")
-                .orderByChild("riderId")
-                .equalTo(userId)
-                .get().await()
-            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Request::class.java)
-            }
-            requests.filter { request ->
-                if (request.status == "Cancelled") return@filter false
-                if (request.status == "Accepted" && request.scheduleId != null) {
-                    val schedule = getSchedule(request.scheduleId) ?: return@filter false
-                    schedule.endTime >= currentTime
-                } else {
-                    true
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
-            emptyList()
-        }
-    }
-
     suspend fun updateConductorLocation(conductorId: String, location: LatLng): Result<Unit> {
         return try {
             val locData = ConductorLocation(
@@ -985,18 +959,57 @@ class AuthRepository {
             })
     }
 
-    suspend fun isChatEnabled(requestId: String): Boolean {
+    // Replace confirmConductorArrivalAndFare in AuthRepository.kt with this:
+
+    suspend fun confirmConductorArrivalAndFare(
+        requestId: String,
+        conductorId: String,
+        fareCollected: Boolean = true
+    ): Result<Unit> {
         return try {
-            val snapshot = database.getReference("requests").child(requestId).get().await()
-            val request = snapshot.getValue(Request::class.java) ?: return false
-            if (request.status != "Accepted" || request.scheduleId == null) return false
-            val scheduleSnapshot = database.getReference("schedules").child(request.scheduleId).get().await()
-            val schedule = scheduleSnapshot.getValue(Schedule::class.java) ?: return false
+            Log.d("AuthRepository", "Conductor confirming arrival for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("যাত্রী এখনো বাসে উঠেননি")
+            }
+
             val currentTime = System.currentTimeMillis()
-            currentTime <= schedule.endTime + 432000000L
+            val updates = mutableMapOf<String, Any>(
+                "rideStatus/conductorArrivedConfirmed" to true,
+                "rideStatus/conductorArrivedAt" to currentTime,
+                "rideStatus/fareCollected" to fareCollected,
+                "rideStatus/fareCollectedAt" to currentTime
+            )
+
+            // If rider also confirmed, mark trip as completed
+            if (request.rideStatus?.riderArrivedConfirmed == true && fareCollected) {
+                updates["rideStatus/tripCompleted"] = true
+                updates["rideStatus/tripCompletedAt"] = currentTime
+                updates["status"] = "Completed" // THIS IS KEY - Update main status
+            }
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Conductor confirmed arrival and fare")
+            Result.success(Unit)
+
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Check chat enabled failed: ${e.message}", e)
-            false
+            Log.e("AuthRepository", "Conductor confirmation failed: ${e.message}", e)
+            Result.failure(e)
         }
     }
 
@@ -1132,21 +1145,6 @@ class AuthRepository {
         }
     }
 
-    suspend fun getAllRequestsForUser(userId: String): List<Request> {
-        return try {
-            val snapshot = database.getReference("requests")
-                .orderByChild("riderId")
-                .equalTo(userId)
-                .get().await()
-
-            snapshot.children.mapNotNull { child ->
-                child.getValue(Request::class.java)
-            }
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get all requests failed: ${e.message}", e)
-            emptyList()
-        }
-    }
 
     suspend fun getAllAcceptedRequestsForConductor(conductorId: String): List<Request> {
         return try {
@@ -1596,114 +1594,6 @@ class AuthRepository {
         }
     }
 
-    /**
-     * Rider confirms arrival at destination
-     */
-    suspend fun confirmRiderArrival(
-        requestId: String,
-        riderId: String
-    ): Result<Unit> {
-        return try {
-            Log.d("AuthRepository", "Rider confirming arrival for request: $requestId")
-
-            val requestRef = database.getReference("requests").child(requestId)
-            val snapshot = requestRef.get().await()
-
-            if (!snapshot.exists()) {
-                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
-            }
-
-            val request = snapshot.getValue(Request::class.java)
-                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
-
-            if (request.riderId != riderId) {
-                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
-            }
-
-            if (request.rideStatus?.inBusTravelling != true) {
-                throw Exception("আপনি এখনো বাসে উঠেননি")
-            }
-
-            val currentTime = System.currentTimeMillis()
-            val updates = mutableMapOf<String, Any>(
-                "rideStatus/riderArrivedConfirmed" to true,
-                "rideStatus/riderArrivedAt" to currentTime
-            )
-
-            // If conductor also confirmed, mark trip as completed
-            if (request.rideStatus?.conductorArrivedConfirmed == true &&
-                request.rideStatus.fareCollected == true) {
-                updates["rideStatus/tripCompleted"] = true
-                updates["rideStatus/tripCompletedAt"] = currentTime
-                updates["status"] = "Completed"
-            }
-
-            requestRef.updateChildren(updates).await()
-
-            Log.d("AuthRepository", "Rider arrival confirmed")
-            Result.success(Unit)
-
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Rider arrival confirmation failed: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Conductor confirms rider arrival and fare collection
-     */
-    suspend fun confirmConductorArrivalAndFare(
-        requestId: String,
-        conductorId: String,
-        fareCollected: Boolean = true
-    ): Result<Unit> {
-        return try {
-            Log.d("AuthRepository", "Conductor confirming arrival for request: $requestId")
-
-            val requestRef = database.getReference("requests").child(requestId)
-            val snapshot = requestRef.get().await()
-
-            if (!snapshot.exists()) {
-                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
-            }
-
-            val request = snapshot.getValue(Request::class.java)
-                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
-
-            if (request.conductorId != conductorId) {
-                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
-            }
-
-            if (request.rideStatus?.inBusTravelling != true) {
-                throw Exception("যাত্রী এখনো বাসে উঠেননি")
-            }
-
-            val currentTime = System.currentTimeMillis()
-            val updates = mutableMapOf<String, Any>(
-                "rideStatus/conductorArrivedConfirmed" to true,
-                "rideStatus/conductorArrivedAt" to currentTime,
-                "rideStatus/fareCollected" to fareCollected,
-                "rideStatus/fareCollectedAt" to currentTime
-            )
-
-            // If rider also confirmed, mark trip as completed
-            if (request.rideStatus?.riderArrivedConfirmed == true && fareCollected) {
-                updates["rideStatus/tripCompleted"] = true
-                updates["rideStatus/tripCompletedAt"] = currentTime
-                updates["status"] = "Completed"
-            }
-
-            requestRef.updateChildren(updates).await()
-
-            Log.d("AuthRepository", "Conductor confirmed arrival and fare")
-            Result.success(Unit)
-
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Conductor confirmation failed: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371 // Radius of Earth in kilometers
         val dLat = Math.toRadians(lat2 - lat1)
@@ -1891,6 +1781,138 @@ class AuthRepository {
 
         } catch (e: Exception) {
             Log.e("AuthRepository", "Late exit approval failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+    // Replace the getRequestsForUser function in AuthRepository.kt with this:
+
+    suspend fun getRequestsForUser(userId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("riderId")
+                .equalTo(userId)
+                .get().await()
+
+            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Request::class.java)
+            }
+
+            // Filter: Show ONLY active requests (Pending or Accepted but NOT completed)
+            requests.filter { request ->
+                when {
+                    request.status == "Cancelled" -> false
+                    request.status == "Pending" -> true
+                    request.status == "Accepted" -> {
+                        // Show accepted requests that are NOT yet completed
+                        request.rideStatus?.tripCompleted != true
+                    }
+                    request.status == "Completed" -> false
+                    else -> false
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    // This function returns ALL accepted trips including completed ones
+// Used by PastTripsScreen
+    suspend fun getAllRequestsForUser(userId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("riderId")
+                .equalTo(userId)
+                .get().await()
+
+            snapshot.children.mapNotNull { child ->
+                child.getValue(Request::class.java)
+            }
+            // Return all requests - PastTripsScreen will handle filtering
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get all requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+    // Replace the isChatEnabled function in AuthRepository.kt with this:
+
+    suspend fun isChatEnabled(requestId: String): Boolean {
+        return try {
+            val snapshot = database.getReference("requests").child(requestId).get().await()
+            val request = snapshot.getValue(Request::class.java) ?: return false
+
+            // Chat is enabled if:
+            // 1. Request is Accepted (or Completed status)
+            // 2. Has a scheduleId
+            // 3. Schedule ended within the last 5 days (432000000ms = 5 days)
+            if ((request.status != "Accepted" && request.status != "Completed") ||
+                request.scheduleId == null) return false
+
+            val scheduleSnapshot = database.getReference("schedules")
+                .child(request.scheduleId)
+                .get()
+                .await()
+            val schedule = scheduleSnapshot.getValue(Schedule::class.java) ?: return false
+
+            val currentTime = System.currentTimeMillis()
+            val fiveDaysInMs = 432000000L // 5 days
+
+            // Chat available if schedule ended within last 5 days
+            currentTime <= (schedule.endTime + fiveDaysInMs)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Check chat enabled failed: ${e.message}", e)
+            false
+        }
+    }
+
+    // Replace confirmRiderArrival in AuthRepository.kt with this:
+
+    suspend fun confirmRiderArrival(
+        requestId: String,
+        riderId: String
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Rider confirming arrival for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.riderId != riderId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("আপনি এখনো বাসে উঠেননি")
+            }
+
+            val currentTime = System.currentTimeMillis()
+            val updates = mutableMapOf<String, Any>(
+                "rideStatus/riderArrivedConfirmed" to true,
+                "rideStatus/riderArrivedAt" to currentTime
+            )
+
+            // If conductor also confirmed and fare collected, mark trip as completed
+            if (request.rideStatus?.conductorArrivedConfirmed == true &&
+                request.rideStatus.fareCollected == true) {
+                updates["rideStatus/tripCompleted"] = true
+                updates["rideStatus/tripCompletedAt"] = currentTime
+                updates["status"] = "Completed" // THIS IS KEY - Update main status
+            }
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Rider arrival confirmed")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Rider arrival confirmation failed: ${e.message}", e)
             Result.failure(e)
         }
     }

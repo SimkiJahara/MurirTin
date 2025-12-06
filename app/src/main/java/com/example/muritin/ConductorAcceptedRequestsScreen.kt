@@ -50,16 +50,22 @@ fun ConductorAcceptedRequestsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Function to load accepted requests
+    // Replace the loadAcceptedRequests function in ConductorAcceptedRequestsScreen.kt:
+
     suspend fun loadAcceptedRequests() {
         try {
             Log.d("ConductorAcceptedRequests", "Loading accepted requests for conductor: ${user.uid}")
             val requests = AuthRepository().getAcceptedRequestsForConductor(user.uid)
             Log.d("ConductorAcceptedRequests", "Found ${requests.size} accepted requests")
 
-            // Load rider data for each request
+            // Filter out completed trips - they should not show here
+            val activeRequests = requests.filter { request ->
+                request.rideStatus?.tripCompleted != true && request.status != "Completed"
+            }
+
+            // Load rider data for each ACTIVE request
             val riderMap = mutableMapOf<String, User>()
-            requests.forEach { request ->
+            activeRequests.forEach { request ->
                 Log.d("ConductorAcceptedRequests", "Loading rider data for riderId: ${request.riderId}")
                 try {
                     val riderResult = AuthRepository().getUser(request.riderId)
@@ -73,9 +79,9 @@ fun ConductorAcceptedRequestsScreen(
             }
 
             riderDataMap = riderMap
-            acceptedRequests = requests
+            acceptedRequests = activeRequests
 
-            Log.d("ConductorAcceptedRequests", "Total rider data loaded: ${riderMap.size}")
+            Log.d("ConductorAcceptedRequests", "Total active requests: ${activeRequests.size}, Total rider data loaded: ${riderMap.size}")
             error = null
         } catch (e: Exception) {
             error = "ডেটা লোড করতে ব্যর্থ: ${e.message}"

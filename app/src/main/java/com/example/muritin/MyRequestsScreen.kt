@@ -46,19 +46,14 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Function to fetch requests
     suspend fun fetchRequests() {
         try {
             Log.d("MyRequestsScreen", "Fetching requests for user ${user.uid}")
-            val allRequests = AuthRepository().getRequestsForUser(user.uid)
-            // Filter out completed trips - they should appear in PastTripsScreen
-            requests = allRequests.filter { request ->
-                request.status != "Completed" &&
-                        request.rideStatus?.tripCompleted != true
-            }
+            // getRequestsForUser now already filters out completed trips
+            requests = AuthRepository().getRequestsForUser(user.uid)
             error = null
         } catch (e: Exception) {
-            error = "রিকোয়েস্ট পুনরুধারে ত্রুটি: ${e.message}"
+            error = "রিকোয়েস্ট পুনরধারে ত্রুটি: ${e.message}"
             Log.e("MyRequestsScreen", "Fetch failed: ${e.message}", e)
         }
     }
