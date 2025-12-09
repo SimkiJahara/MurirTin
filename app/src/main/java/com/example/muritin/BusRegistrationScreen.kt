@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -185,7 +186,9 @@ fun BusRegistrationScreen(navController: NavHostController) {
                 text = "নতু্ন বাস রেজিস্ট্রেশন করুন",
                 style = MaterialTheme.typography.headlineMedium,
                 color = Color.White,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -321,15 +324,17 @@ fun BusRegistrationScreen(navController: NavHostController) {
                             isError = error != null && taxToken.isBlank()
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
 
                         Text(
                             text = "বাসের রুট নির্বাচন করুন",
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Primary,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         //Section for selecting origin location
                         if(screenForOrigin) {

@@ -261,8 +261,8 @@ fun ConductorBusInfo(navController: NavHostController, user: FirebaseUser) {
 
                             InfoItem(
                                 icon = Icons.Outlined.StopCircle,
-                                label = "বাসের স্টপস",
-                                value = assignedBus!!.stops.joinToString(", "),
+                                label = "বাসের রুট",
+                                value = assignedBus!!.stops.joinToString(" ---> "),
                                 iconColor = RouteGreen
                             )
 

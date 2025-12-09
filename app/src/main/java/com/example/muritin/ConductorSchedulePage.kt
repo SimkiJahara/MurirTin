@@ -1,5 +1,6 @@
 package com.example.muritin
 
+import android.R
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -354,7 +355,7 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                                                     dismissButton = {
                                                         TextButton(onClick = {
                                                             showDeleteDialog = false
-                                                        }) { Text("বাতিল") }
+                                                        }) { Text("বাতিল", color = Primary) }
                                                     }
                                                 )
                                             }
@@ -507,7 +508,7 @@ fun ScheduleItemCard(
                         Icon(
                             Icons.Outlined.Edit,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = Primary
                         )
                     }
                     IconButton(onClick = onDelete) {
@@ -577,7 +578,7 @@ fun ScheduleDialog(
                 Text("সংরক্ষণ")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল", color = Error) } },
         title = {
             Text(title, fontWeight = FontWeight.Bold)
         },
@@ -589,7 +590,8 @@ fun ScheduleDialog(
                     label = { Text("তারিখ (YYYY-MM-DD)") },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedLabelColor = Primary,
-                        unfocusedLabelColor = TextSecondary
+                        unfocusedLabelColor = TextSecondary,
+                        focusedBorderColor = Primary
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -600,7 +602,8 @@ fun ScheduleDialog(
                     label = { Text("শুরুর সময় (HH:MM)") },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedLabelColor = Primary,
-                        unfocusedLabelColor = TextSecondary
+                        unfocusedLabelColor = TextSecondary,
+                        focusedBorderColor = Primary
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -611,7 +614,8 @@ fun ScheduleDialog(
                     label = { Text("শেষের সময় (HH:MM)") },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedLabelColor = Primary,
-                        unfocusedLabelColor = TextSecondary
+                        unfocusedLabelColor = TextSecondary,
+                        focusedBorderColor = Primary
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
