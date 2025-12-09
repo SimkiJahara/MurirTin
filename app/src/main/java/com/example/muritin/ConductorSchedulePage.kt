@@ -324,6 +324,7 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                                                             "তারিখ: ${schedule.date}"
                                                         )
                                                     },
+                                                    containerColor = BackgroundLight,
                                                     confirmButton = {
                                                         TextButton(
                                                             onClick = {
@@ -568,7 +569,11 @@ fun ScheduleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            Button(onClick = { onConfirm(date, start, end, direction) }) {
+            Button(onClick = { onConfirm(date, start, end, direction) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Primary,
+                    contentColor = Color.White
+                )) {
                 Text("সংরক্ষণ")
             }
         },
@@ -582,6 +587,10 @@ fun ScheduleDialog(
                     value = date,
                     onValueChange = { date = it },
                     label = { Text("তারিখ (YYYY-MM-DD)") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedLabelColor = Primary,
+                        unfocusedLabelColor = TextSecondary
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -589,6 +598,10 @@ fun ScheduleDialog(
                     value = start,
                     onValueChange = { start = it },
                     label = { Text("শুরুর সময় (HH:MM)") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedLabelColor = Primary,
+                        unfocusedLabelColor = TextSecondary
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -596,6 +609,10 @@ fun ScheduleDialog(
                     value = end,
                     onValueChange = { end = it },
                     label = { Text("শেষের সময় (HH:MM)") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedLabelColor = Primary,
+                        unfocusedLabelColor = TextSecondary
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -608,16 +625,45 @@ fun ScheduleDialog(
                     FilterChip(
                         selected = direction == "going",
                         onClick = { direction = "going" },
-                        label = { Text("যাচ্ছি") }
+                        label = { Text("যাচ্ছি") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.White,
+                            labelColor = TextPrimary,
+                            selectedContainerColor = Primary,
+                            selectedLabelColor = Color.White,
+                            disabledContainerColor = BackgroundLight,
+                            disabledLabelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = Primary,
+                            selectedBorderColor = Primary,
+                            enabled = true,
+                            selected = true
+                        )
                     )
                     FilterChip(
                         selected = direction == "returning",
                         onClick = { direction = "returning" },
-                        label = { Text("ফিরছি") }
+                        label = { Text("ফিরছি") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.White,
+                            labelColor = TextPrimary,
+                            selectedContainerColor = Primary,
+                            selectedLabelColor = Color.White,
+                            disabledContainerColor = BackgroundLight,
+                            disabledLabelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = Primary,
+                            selectedBorderColor = Primary,
+                            enabled = true,
+                            selected = true
+                        )
                     )
                 }
             }
-        }
+        },
+        containerColor = BackgroundLight
     )
 }
 
