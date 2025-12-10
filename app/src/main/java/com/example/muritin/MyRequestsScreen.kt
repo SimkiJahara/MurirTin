@@ -302,7 +302,7 @@ fun RequestCard(
         request.rideStatus?.inBusTravelling == true -> "বাসে ভ্রমণরত"
         request.rideStatus?.otpVerified == true -> "OTP যাচাইকৃত"
         request.status == "Accepted" -> "গৃহীত"
-        request.status == "Pending" -> "অপেক্ষমাণ"
+        request.status == "Pending" -> "অপেক্ষমান (৩ মিনিটের মধ্যে রিকোয়েস্ট অ্যাক্সেপ্ট করা না হলে রিকোয়েস্ট টি মুছে যাবে)"
         request.status == "Cancelled" -> "বাতিল"
         else -> request.status
     }

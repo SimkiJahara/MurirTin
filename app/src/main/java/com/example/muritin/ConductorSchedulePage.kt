@@ -382,6 +382,22 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                             val startMs = parseTime(date, start)
                             val endMs = parseTime(date, end)
                             scope.launch(Dispatchers.IO) {
+                                val currentTime = System.currentTimeMillis()
+                                val oneDay = 86400000L
+                                val oneDayBefore = currentTime - oneDay
+                                val scheduleOverlap = AuthRepository().checkDuplicateSchedule(startMs, endMs, user.uid)
+                                if (scheduleOverlap) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "এই দিনে এই সময়ে অন্য একটি শিডিউল আছে। দয়া করে অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                    }
+                                    return@launch
+                                }
+                                if (startMs < oneDayBefore) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "১ দিনের বেশি আগের শিডিউল তৈরি করা যাবে না। দয়া করে অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                    }
+                                    return@launch
+                                }
                                 val result = AuthRepository().createSchedule(
                                     busId = assignedBus!!.busId,
                                     conductorId = user.uid,
@@ -420,6 +436,22 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                         try {
                             val startMs = parseTime(date, start)
                             val endMs = parseTime(date, end)
+                            val currentTime = System.currentTimeMillis()
+                            val oneDay = 86400000L
+                            val oneDayBefore = currentTime - oneDay
+                            val scheduleOverlap = AuthRepository().checkDuplicateSchedule(startMs, endMs, user.uid)
+                            if (scheduleOverlap) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "একই সময়ে অন্য একটি শিডিউল আছে। অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                }
+                                return@launch
+                            }
+                            if (startMs < oneDayBefore) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "১ দিনের বেশি আগের শিডিউল তৈরি করা যাবে না। অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                }
+                                return@launch
+                            }
                             database.getReference("schedules")
                                 .child(editingSchedule!!.scheduleId)
                                 .updateChildren(

@@ -603,6 +603,7 @@ fun ConductorDashboard(
                             onClick = { navController.navigate("conductor_schedule_page") },
                             iconColor = RouteOrange
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
                         ManagementActionButton(
                             icon = Icons.Outlined.Group,
                             title = "গৃহীত রিকোয়েস্ট দেখুন",

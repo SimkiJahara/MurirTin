@@ -925,6 +925,31 @@ class AuthRepository {
         }
     }
 
+    suspend fun checkDuplicateSchedule(startTime: Long, endTime: Long, conductId: String): Boolean {
+        try {
+            val snapshot = database.getReference("schedules").orderByChild("conductorId")
+                .equalTo(conductId).get().await()
+            val schedules = snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Schedule::class.java)
+            }
+            for (sch in schedules) {
+                val existingStartTime = sch.startTime
+                val existingEndTime = sch.endTime
+
+                val endsBefore = endTime <= existingStartTime
+                val startsAfter = startTime >= existingEndTime
+
+                if (!(endsBefore || startsAfter)) {
+                    return true
+                }
+            }
+            return false
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Checking schedule failed: ${e.message}", e)
+            return false
+        }
+    }
+
     suspend fun sendMessage(requestId: String, text: String): Result<Unit> {
         return try {
             val currentUid = auth.currentUser?.uid ?: throw Exception("No user logged in")
