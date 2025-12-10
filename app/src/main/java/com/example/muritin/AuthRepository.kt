@@ -25,6 +25,7 @@ import com.firebase.geofire.GeoLocation
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.text.replace
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -804,9 +805,53 @@ class AuthRepository {
             }
             database.getReference("requests").child(requestId).updateChildren(updates).await()
             Log.d("AuthRepository", "Request accepted with OTP: $otp for bus: $busId")
+            val res = AuthRepository().updateFareForAcceptedRequest(req.id, busId)
+            Log.d("AuthRepository", "Fare updated!")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Accept request failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateFareForAcceptedRequest(reqId: String, busId: String): Result<Unit> {
+        return try {
+            val reqSnapshot = database.getReference("requests")
+                .child(reqId)
+                .get()
+                .await()
+
+            val request = reqSnapshot.getValue(Request::class.java)
+                ?: return Result.failure(Exception("Request not found"))
+
+            val origin = request.pickup.replace(Regex("[^A-Za-z0-9 ]"), "")
+            val destination = request.destination.replace(Regex("[^A-Za-z0-9 ]"), "")
+
+            val busSnapshot = database.getReference("buses")
+                .child(busId)
+                .get()
+                .await()
+
+            val bus = busSnapshot.getValue(Bus::class.java)
+
+            val fare = bus?.fares[origin]?.get(destination)
+                ?: (-15)
+            Log.d("AuthRepository", "The fetched fare is: $fare")
+            if (fare != (-15)){
+                val updatedRequest = request.copy(fare = fare)
+                database.getReference("requests")
+                    .child(reqId)
+                    .setValue(updatedRequest)
+                    .await()
+
+                Result.success(Unit)
+            } else {
+                Result.success(Unit)
+            }
+
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Update fare failed: ${e.message}", e)
             Result.failure(e)
         }
     }
