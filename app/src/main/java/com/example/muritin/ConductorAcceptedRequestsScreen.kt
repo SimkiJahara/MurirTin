@@ -328,6 +328,8 @@ fun ConductorAcceptedRequestsScreen(
         )
     }
 }
+// Replace the ConductorRequestCard in ConductorAcceptedRequestsScreen.kt
+// This version removes manual fare collection buttons since everything is automatic
 
 @Composable
 fun ConductorRequestCard(
@@ -416,6 +418,41 @@ fun ConductorRequestCard(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // AUTO-MONITORING INDICATOR
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = RouteGreen.copy(alpha = 0.1f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoMode,
+                            contentDescription = null,
+                            tint = RouteGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "স্বয়ংক্রিয় পর্যবেক্ষণ সক্রিয়",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteGreen
+                            )
+                            Text(
+                                "গন্তব্যে পৌঁছানো এবং ভাড়া সংগ্রহ স্বয়ংক্রিয়ভাবে হবে",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             // Route details
@@ -463,7 +500,7 @@ fun ConductorRequestCard(
                 )
             }
 
-            // Early Exit Request Card
+            // Early Exit Request Card (ONLY APPROVAL, NO MANUAL ENTRY)
             if (request.rideStatus?.earlyExitRequested == true) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Card(
@@ -482,7 +519,7 @@ fun ConductorRequestCard(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "যাত্রী আগাম নামতে চায়",
+                                "যাত্রী আগাম নামতে চায় (স্বয়ংক্রিয়)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = RouteOrange
@@ -494,50 +531,17 @@ fun ConductorRequestCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    val result = AuthRepository().approveEarlyExit(
-                                        request.id,
-                                        conductorId
-                                    )
-                                    if (result.isSuccess) {
-                                        Toast.makeText(
-                                            context,
-                                            "আগাম নামার অনুমোদন দেওয়া হয়েছে",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        onRefresh()
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            result.exceptionOrNull()?.message ?: "ব্যর্থ",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = RouteOrange
-                            )
-                        ) {
-                            Icon(
-                                Icons.Filled.CheckCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("অনুমোদন দিন")
-                        }
+                        Text(
+                            "ভাড়া স্বয়ংক্রিয়ভাবে পুনর্গণনা করা হয়েছে",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = RouteGreen,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
 
-            // Late Exit Request Card
+            // Late Exit Request Card (ONLY APPROVAL, NO MANUAL ENTRY)
             if (request.rideStatus?.lateExitRequested == true) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Card(
@@ -556,7 +560,7 @@ fun ConductorRequestCard(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "যাত্রী পরে নামতে চায়",
+                                "যাত্রী পরে নামতে চায় (স্বয়ংক্রিয়)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = RouteBlue
@@ -568,45 +572,12 @@ fun ConductorRequestCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    val result = AuthRepository().approveLateExit(
-                                        request.id,
-                                        conductorId
-                                    )
-                                    if (result.isSuccess) {
-                                        Toast.makeText(
-                                            context,
-                                            "পরে নামার অনুমোদন দেওয়া হয়েছে",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        onRefresh()
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            result.exceptionOrNull()?.message ?: "ব্যর্থ",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = RouteBlue
-                            )
-                        ) {
-                            Icon(
-                                Icons.Filled.CheckCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("অনুমোদন দিন")
-                        }
+                        Text(
+                            "ভাড়া স্বয়ংক্রিয়ভাবে পুনর্গণনা করা হয়েছে",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = RouteGreen,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
@@ -615,48 +586,47 @@ fun ConductorRequestCard(
 
             // Action Buttons
             if (request.rideStatus?.inBusTravelling == true) {
-                // If travelling, show fare collection button
-                if (!request.rideStatus.conductorArrivedConfirmed) {
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                val result = AuthRepository().confirmConductorArrivalAndFare(
-                                    request.id,
-                                    conductorId,
-                                    fareCollected = true
-                                )
-                                if (result.isSuccess) {
-                                    Toast.makeText(
-                                        context,
-                                        "ভাড়া আদায় নিশ্চিত করা হয়েছে",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    onRefresh()
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        result.exceptionOrNull()?.message ?: "ব্যর্থ",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = RouteGreen)
-                    ) {
-                        Icon(
-                            Icons.Filled.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("ভাড়া আদায় নিশ্চিত করুন")
-                    }
-                } else if (!request.rideStatus.tripCompleted) {
-                    // Waiting for rider confirmation
+                // REMOVED MANUAL FARE COLLECTION BUTTON
+                // Everything is automatic now!
+
+                if (!request.rideStatus.tripCompleted) {
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFE3F2FD)
+                            containerColor = Color(0xFFE8F5E9)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Filled.AutoMode,
+                                contentDescription = null,
+                                tint = RouteGreen,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "স্বয়ংক্রিয় পর্যবেক্ষণ চলছে",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteGreen,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                "যাত্রী গন্তব্যে পৌঁছালে ভাড়া স্বয়ংক্রিয়ভাবে সংগ্রহ হবে",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    // Trip completed
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = RouteGreen.copy(alpha = 0.1f)
                         ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -664,17 +634,26 @@ fun ConductorRequestCard(
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = RouteBlue,
-                                strokeWidth = 2.dp
+                            Icon(
+                                Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = RouteGreen,
+                                modifier = Modifier.size(32.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "যাত্রী নিশ্চিত করার জন্য অপেক্ষা করছে...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary
-                            )
+                            Column {
+                                Text(
+                                    "যাত্রা সম্পূর্ণ",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RouteGreen
+                                )
+                                Text(
+                                    "স্বয়ংক্রিয়ভাবে সম্পন্ন হয়েছে",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
                         }
                     }
                 }

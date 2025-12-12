@@ -10,15 +10,19 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- NEW – REQUIRED FOR FILE PICKER -->
-    <!-- Android 12‑ (API ≤ 32) -->
+    <!-- NEW: Required for background location (Android 10+) -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- NEW: Foreground service type for location -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Android 12– (API ≤ 32) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
     <!-- Android 13+ (API 33+) – granular media permissions -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <!-- If you ever allow PDF selection from Downloads -->
     <uses-permission android:name="android.permission.READ_MEDIA_DOCUMENTS"
         tools:node="merge" />
 
@@ -42,6 +46,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- NEW: Trip Monitoring Service -->
+        <service
+            android:name=".TripMonitoringService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"

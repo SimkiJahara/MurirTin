@@ -1614,16 +1614,6 @@ class AuthRepository {
         }
     }
 
-    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val r = 6371 // Radius of Earth in kilometers
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lon2 - lon1)
-        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2)
-        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-        return r * c
-    }
 
     suspend fun calculateAndUpdateFare(
         requestId: String,
@@ -1999,5 +1989,240 @@ class AuthRepository {
             Log.e("AuthRepository", "Get all accepted requests failed: ${e.message}", e)
             emptyList()
         }
+    }
+
+    // Add these new functions to AuthRepository.kt
+
+    /**
+     * Automatically detect if rider has reached destination and complete trip
+     * This should be called periodically (every 10-15 seconds) while rider is traveling
+     */
+    suspend fun checkAndAutoCompleteTrip(
+        requestId: String,
+        riderCurrentLocation: LatLng
+    ): Result<Boolean> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                return Result.failure(Exception("Request not found"))
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: return Result.failure(Exception("Failed to parse request"))
+
+            // Only auto-complete if rider is traveling and trip not already completed
+            if (request.rideStatus?.inBusTravelling != true ||
+                request.rideStatus.tripCompleted == true) {
+                return Result.success(false)
+            }
+
+            // Get destination coordinates
+            val destLat = request.destinationLatLng?.lat ?: return Result.success(false)
+            val destLng = request.destinationLatLng?.lng ?: return Result.success(false)
+
+            // Calculate distance to destination
+            val distanceToDestination = calculateDistance(
+                riderCurrentLocation.latitude,
+                riderCurrentLocation.longitude,
+                destLat,
+                destLng
+            )
+
+            // If within 50 meters of destination, auto-complete
+            if (distanceToDestination <= 0.05) { // 50 meters = 0.05 km
+                Log.d("AutoComplete", "Rider reached destination, auto-completing trip")
+
+                val currentTime = System.currentTimeMillis()
+                val updates = mapOf(
+                    "rideStatus/riderArrivedConfirmed" to true,
+                    "rideStatus/riderArrivedAt" to currentTime,
+                    "rideStatus/conductorArrivedConfirmed" to true,
+                    "rideStatus/conductorArrivedAt" to currentTime,
+                    "rideStatus/fareCollected" to true,
+                    "rideStatus/fareCollectedAt" to currentTime,
+                    "rideStatus/tripCompleted" to true,
+                    "rideStatus/tripCompletedAt" to currentTime,
+                    "status" to "Completed"
+                )
+
+                requestRef.updateChildren(updates).await()
+
+                Log.d("AutoComplete", "Trip auto-completed successfully")
+                return Result.success(true)
+            }
+
+            Result.success(false)
+        } catch (e: Exception) {
+            Log.e("AutoComplete", "Auto-complete check failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Automatically detect and handle early/late exit requests based on rider location
+     * Returns: "early" if rider approaching early stop, "late" if past destination, null otherwise
+     */
+    suspend fun detectAndHandleExitChange(
+        requestId: String,
+        riderCurrentLocation: LatLng
+    ): Result<String?> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                return Result.failure(Exception("Request not found"))
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: return Result.failure(Exception("Failed to parse request"))
+
+            // Only check if rider is traveling
+            if (request.rideStatus?.inBusTravelling != true) {
+                return Result.success(null)
+            }
+
+            // Skip if already requested exit change
+            if (request.rideStatus.earlyExitRequested || request.rideStatus.lateExitRequested) {
+                return Result.success(null)
+            }
+
+            val busId = request.busId ?: return Result.success(null)
+            val bus = getBus(busId) ?: return Result.success(null)
+            val route = bus.route ?: return Result.success(null)
+
+            // Get destination coordinates
+            val destLat = request.destinationLatLng?.lat ?: return Result.success(null)
+            val destLng = request.destinationLatLng?.lng ?: return Result.success(null)
+
+            val distanceToOriginalDest = calculateDistance(
+                riderCurrentLocation.latitude,
+                riderCurrentLocation.longitude,
+                destLat,
+                destLng
+            )
+
+            // Check for EARLY EXIT (approaching a stop before destination)
+            val allStops = mutableListOf<PointLocation>()
+            route.originLoc?.let { allStops.add(it) }
+            allStops.addAll(route.stopPointsLoc)
+            route.destinationLoc?.let { allStops.add(it) }
+
+            // Find destination index
+            val destGeoHash = GeoFireUtils.getGeoHashForLocation(
+                GeoLocation(destLat, destLng), 5
+            )
+            val destIndex = allStops.indexOfFirst { it.geohash == destGeoHash }
+
+            // Check stops before destination
+            for (i in 0 until destIndex) {
+                val stop = allStops[i]
+                val distanceToStop = calculateDistance(
+                    riderCurrentLocation.latitude,
+                    riderCurrentLocation.longitude,
+                    stop.latitude,
+                    stop.longitude
+                )
+
+                // If within 100 meters of a stop before destination
+                if (distanceToStop <= 0.1) { // 100 meters
+                    Log.d("AutoExitDetect", "Rider approaching early stop: ${stop.address}")
+
+                    // Auto-request early exit and recalculate fare
+                    val result = requestEarlyExit(
+                        requestId,
+                        request.riderId,
+                        stop.address,
+                        LatLngData(stop.latitude, stop.longitude)
+                    )
+
+                    if (result.isSuccess) {
+                        // Auto-approve and recalculate fare
+                        approveEarlyExit(requestId, request.conductorId)
+                        return Result.success("early")
+                    }
+                }
+            }
+
+            // Check for LATE EXIT (passed destination, approaching next stop)
+            if (distanceToOriginalDest > 0.2) { // More than 200m past destination
+                // Check stops after destination
+                for (i in (destIndex + 1) until allStops.size) {
+                    val stop = allStops[i]
+                    val distanceToStop = calculateDistance(
+                        riderCurrentLocation.latitude,
+                        riderCurrentLocation.longitude,
+                        stop.latitude,
+                        stop.longitude
+                    )
+
+                    // If within 100 meters of a stop after destination
+                    if (distanceToStop <= 0.1) {
+                        Log.d("AutoExitDetect", "Rider approaching late stop: ${stop.address}")
+
+                        // Auto-request late exit and recalculate fare
+                        val result = requestLateExit(
+                            requestId,
+                            request.riderId,
+                            stop.address,
+                            LatLngData(stop.latitude, stop.longitude)
+                        )
+
+                        if (result.isSuccess) {
+                            // Auto-approve and recalculate fare
+                            approveLateExit(requestId, request.conductorId)
+                            return Result.success("late")
+                        }
+                    }
+                }
+            }
+
+            Result.success(null)
+        } catch (e: Exception) {
+            Log.e("AutoExitDetect", "Exit detection failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Background monitoring service - call this periodically while rider is traveling
+     * Combines auto-completion and exit detection
+     */
+    suspend fun monitorRiderTrip(
+        requestId: String,
+        riderCurrentLocation: LatLng
+    ): Result<String> {
+        return try {
+            // First check for exit changes (early/late)
+            val exitChange = detectAndHandleExitChange(requestId, riderCurrentLocation)
+            if (exitChange.isSuccess && exitChange.getOrNull() != null) {
+                return Result.success("exit_changed_${exitChange.getOrNull()}")
+            }
+
+            // Then check for trip completion
+            val completed = checkAndAutoCompleteTrip(requestId, riderCurrentLocation)
+            if (completed.isSuccess && completed.getOrNull() == true) {
+                return Result.success("completed")
+            }
+
+            Result.success("monitoring")
+        } catch (e: Exception) {
+            Log.e("TripMonitor", "Monitoring failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    // Helper function (already exists but ensuring it's here)
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371 // Radius of Earth in kilometers
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
     }
 }
