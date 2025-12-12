@@ -454,7 +454,7 @@ private fun getRatingColor(rating: Float): Color {
 }
 
 @Composable
-fun RatingDisplay(rating: Float, totalRatings: Int = 0) {
+fun RatingDisplay2(rating: Float, totalRatings: Int = 0) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)

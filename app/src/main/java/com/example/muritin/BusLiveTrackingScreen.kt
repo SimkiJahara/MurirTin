@@ -95,7 +95,7 @@ fun BusLiveTrackingScreen(
     // Calculate speed and distance
     fun calculateMetrics(current: ConductorLocation, previous: ConductorLocation?) {
         if (previous != null) {
-            val distance = calculateDistance(
+            val distance = calculateDistances(
                 previous.lat, previous.lng,
                 current.lat, current.lng
             )
@@ -836,7 +836,7 @@ fun BusLiveTrackingScreen(
 }
 
 // Helper function to calculate distance between two points
-fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+fun calculateDistances(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
     val r = 6371 // Earth's radius in km
     val dLat = Math.toRadians(lat2 - lat1)
     val dLon = Math.toRadians(lon2 - lon1)

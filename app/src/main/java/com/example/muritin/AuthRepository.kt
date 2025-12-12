@@ -1214,151 +1214,7 @@ class AuthRepository {
         }
     }
 
-    private suspend fun updateConductorRatings(conductorId: String) {
-        try {
-            // Get ALL requests and filter by conductorId in code
-            val snapshot = database.getReference("requests").get().await()
 
-            val ratedRequests = snapshot.children.mapNotNull { child ->
-                val req = child.getValue(Request::class.java)
-                // Filter: must match conductorId, be Accepted, and have a rating
-                if (req?.conductorId == conductorId &&
-                    req.status == "Accepted" &&
-                    req.rating != null) {
-                    req
-                } else {
-                    null
-                }
-            }
-
-            Log.d("AuthRepository", "Found ${ratedRequests.size} rated requests for conductor $conductorId")
-
-            if (ratedRequests.isEmpty()) {
-                // Still create an empty rating object so owner knows there are no ratings yet
-                val conductorRatings = ConductorRatings(
-                    conductorId = conductorId,
-                    totalRatings = 0,
-                    averageRating = 0f,
-                    totalTrips = 0,
-                    reviews = emptyList()
-                )
-                database.getReference("conductorRatings")
-                    .child(conductorId)
-                    .setValue(conductorRatings)
-                    .await()
-                return
-            }
-
-            val totalRatings = ratedRequests.size
-            val averageRating = ratedRequests.map { it.rating!!.conductorRating }.average().toFloat()
-
-            // Get recent reviews (last 10)
-            val reviews = ratedRequests
-                .sortedByDescending { it.rating!!.timestamp }
-                .take(10)
-                .mapNotNull { req ->
-                    val riderData = getUser(req.riderId).getOrNull()
-                    ReviewSummary(
-                        requestId = req.id,
-                        riderName = riderData?.name ?: "Anonymous",
-                        rating = req.rating!!.conductorRating,
-                        comment = req.rating!!.comment,
-                        timestamp = req.rating!!.timestamp,
-                        route = "${req.pickup} to ${req.destination}"
-                    )
-                }
-
-            val conductorRatings = ConductorRatings(
-                conductorId = conductorId,
-                totalRatings = totalRatings,
-                averageRating = averageRating,
-                totalTrips = ratedRequests.size,
-                reviews = reviews
-            )
-
-            database.getReference("conductorRatings")
-                .child(conductorId)
-                .setValue(conductorRatings)
-                .await()
-
-            Log.d("AuthRepository", "Updated conductor ratings for $conductorId: avg=${averageRating}, total=${totalRatings}")
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Update conductor ratings failed: ${e.message}", e)
-        }
-    }
-
-    private suspend fun updateBusRatings(busId: String) {
-        try {
-            // Get ALL requests and filter by busId in code
-            val snapshot = database.getReference("requests").get().await()
-
-            val ratedRequests = snapshot.children.mapNotNull { child ->
-                val req = child.getValue(Request::class.java)
-                // Filter: must match busId, be Accepted, and have a rating
-                if (req?.busId == busId &&
-                    req.status == "Accepted" &&
-                    req.rating != null) {
-                    req
-                } else {
-                    null
-                }
-            }
-
-            Log.d("AuthRepository", "Found ${ratedRequests.size} rated requests for bus $busId")
-
-            if (ratedRequests.isEmpty()) {
-                // Still create an empty rating object so owner knows there are no ratings yet
-                val busRatings = BusRatings(
-                    busId = busId,
-                    totalRatings = 0,
-                    averageRating = 0f,
-                    totalTrips = 0,
-                    reviews = emptyList()
-                )
-                database.getReference("busRatings")
-                    .child(busId)
-                    .setValue(busRatings)
-                    .await()
-                return
-            }
-
-            val totalRatings = ratedRequests.size
-            val averageRating = ratedRequests.map { it.rating!!.busRating }.average().toFloat()
-
-            // Get recent reviews (last 10)
-            val reviews = ratedRequests
-                .sortedByDescending { it.rating!!.timestamp }
-                .take(10)
-                .mapNotNull { req ->
-                    val riderData = getUser(req.riderId).getOrNull()
-                    ReviewSummary(
-                        requestId = req.id,
-                        riderName = riderData?.name ?: "Anonymous",
-                        rating = req.rating!!.busRating,
-                        comment = req.rating!!.comment,
-                        timestamp = req.rating!!.timestamp,
-                        route = "${req.pickup} to ${req.destination}"
-                    )
-                }
-
-            val busRatings = BusRatings(
-                busId = busId,
-                totalRatings = totalRatings,
-                averageRating = averageRating,
-                totalTrips = ratedRequests.size,
-                reviews = reviews
-            )
-
-            database.getReference("busRatings")
-                .child(busId)
-                .setValue(busRatings)
-                .await()
-
-            Log.d("AuthRepository", "Updated bus ratings for $busId: avg=${averageRating}, total=${totalRatings}")
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Update bus ratings failed: ${e.message}", e)
-        }
-    }
 
     suspend fun getConductorRatings(conductorId: String): ConductorRatings? {
         return try {
@@ -2224,5 +2080,153 @@ class AuthRepository {
                 Math.sin(dLon / 2) * Math.sin(dLon / 2)
         val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
         return r * c
+    }
+
+    // Replace the updateConductorRatings function in AuthRepository.kt
+
+    private suspend fun updateConductorRatings(conductorId: String) {
+        try {
+            // Get ALL requests and filter by conductorId in code
+            val snapshot = database.getReference("requests").get().await()
+
+            val ratedRequests = snapshot.children.mapNotNull { child ->
+                val req = child.getValue(Request::class.java)
+                // Filter: must match conductorId, be Accepted OR Completed, and have a rating
+                if (req?.conductorId == conductorId &&
+                    (req.status == "Accepted" || req.status == "Completed") &&  // ✅ FIXED
+                    req.rating != null) {
+                    req
+                } else {
+                    null
+                }
+            }
+
+            Log.d("AuthRepository", "Found ${ratedRequests.size} rated requests for conductor $conductorId")
+
+            if (ratedRequests.isEmpty()) {
+                // Still create an empty rating object so owner knows there are no ratings yet
+                val conductorRatings = ConductorRatings(
+                    conductorId = conductorId,
+                    totalRatings = 0,
+                    averageRating = 0f,
+                    totalTrips = 0,
+                    reviews = emptyList()
+                )
+                database.getReference("conductorRatings")
+                    .child(conductorId)
+                    .setValue(conductorRatings)
+                    .await()
+                return
+            }
+
+            val totalRatings = ratedRequests.size
+            val averageRating = ratedRequests.map { it.rating!!.conductorRating }.average().toFloat()
+
+            // Get recent reviews (last 10)
+            val reviews = ratedRequests
+                .sortedByDescending { it.rating!!.timestamp }
+                .take(10)
+                .mapNotNull { req ->
+                    val riderData = getUser(req.riderId).getOrNull()
+                    ReviewSummary(
+                        requestId = req.id,
+                        riderName = riderData?.name ?: "Anonymous",
+                        rating = req.rating!!.conductorRating,
+                        comment = req.rating!!.comment,
+                        timestamp = req.rating!!.timestamp,
+                        route = "${req.pickup} to ${req.destination}"
+                    )
+                }
+
+            val conductorRatings = ConductorRatings(
+                conductorId = conductorId,
+                totalRatings = totalRatings,
+                averageRating = averageRating,
+                totalTrips = ratedRequests.size,
+                reviews = reviews
+            )
+
+            database.getReference("conductorRatings")
+                .child(conductorId)
+                .setValue(conductorRatings)
+                .await()
+
+            Log.d("AuthRepository", "Updated conductor ratings for $conductorId: avg=${averageRating}, total=${totalRatings}")
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Update conductor ratings failed: ${e.message}", e)
+        }
+    }
+
+    private suspend fun updateBusRatings(busId: String) {
+        try {
+            // Get ALL requests and filter by busId in code
+            val snapshot = database.getReference("requests").get().await()
+
+            val ratedRequests = snapshot.children.mapNotNull { child ->
+                val req = child.getValue(Request::class.java)
+                // Filter: must match busId, be Accepted OR Completed, and have a rating
+                if (req?.busId == busId &&
+                    (req.status == "Accepted" || req.status == "Completed") &&  // ✅ FIXED
+                    req.rating != null) {
+                    req
+                } else {
+                    null
+                }
+            }
+
+            Log.d("AuthRepository", "Found ${ratedRequests.size} rated requests for bus $busId")
+
+            if (ratedRequests.isEmpty()) {
+                // Still create an empty rating object so owner knows there are no ratings yet
+                val busRatings = BusRatings(
+                    busId = busId,
+                    totalRatings = 0,
+                    averageRating = 0f,
+                    totalTrips = 0,
+                    reviews = emptyList()
+                )
+                database.getReference("busRatings")
+                    .child(busId)
+                    .setValue(busRatings)
+                    .await()
+                return
+            }
+
+            val totalRatings = ratedRequests.size
+            val averageRating = ratedRequests.map { it.rating!!.busRating }.average().toFloat()
+
+            // Get recent reviews (last 10)
+            val reviews = ratedRequests
+                .sortedByDescending { it.rating!!.timestamp }
+                .take(10)
+                .mapNotNull { req ->
+                    val riderData = getUser(req.riderId).getOrNull()
+                    ReviewSummary(
+                        requestId = req.id,
+                        riderName = riderData?.name ?: "Anonymous",
+                        rating = req.rating!!.busRating,
+                        comment = req.rating!!.comment,
+                        timestamp = req.rating!!.timestamp,
+                        route = "${req.pickup} to ${req.destination}"
+                    )
+                }
+
+            val busRatings = BusRatings(
+                busId = busId,
+                totalRatings = totalRatings,
+                averageRating = averageRating,
+                totalTrips = ratedRequests.size,
+                reviews = reviews
+            )
+
+            database.getReference("busRatings")
+                .child(busId)
+                .setValue(busRatings)
+                .await()
+
+            Log.d("AuthRepository", "Updated bus ratings for $busId: avg=${averageRating}, total=${totalRatings}")
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Update bus ratings failed: ${e.message}", e)
+        }
     }
 }

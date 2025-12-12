@@ -657,6 +657,6 @@ fun RatingItem(label: String, rating: Float) {
             color = TextSecondary
         )
         Spacer(modifier = Modifier.height(4.dp))
-        RatingDisplay(rating)
+        RatingDisplay2(rating)
     }
 }
