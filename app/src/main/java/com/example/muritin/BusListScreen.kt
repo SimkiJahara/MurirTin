@@ -16,17 +16,7 @@ import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.Badge
-import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DirectionsBus
-import androidx.compose.material.icons.outlined.Error
-import androidx.compose.material.icons.outlined.FileCopy
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.PersonAdd
-import androidx.compose.material.icons.outlined.Place
-import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.VerticalAlignmentLine
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -42,16 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import com.example.muritin.ui.theme.BackgroundLight
-import com.example.muritin.ui.theme.Border
-import com.example.muritin.ui.theme.Divider
-import com.example.muritin.ui.theme.Info
-import com.example.muritin.ui.theme.Primary
-import com.example.muritin.ui.theme.PrimaryLight
-import com.example.muritin.ui.theme.Secondary
-import com.example.muritin.ui.theme.TextPrimary
-import com.example.muritin.ui.theme.TextSecondary
-import com.example.muritin.ui.theme.Warning
+import com.example.muritin.ui.theme.*
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.launch
@@ -444,6 +424,13 @@ fun BusInfoCard(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
 
+    // Check if bus has an active schedule
+    val now = System.currentTimeMillis()
+    val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
+    val hasActiveSchedule = schedules.any {
+        it.date == today && it.startTime <= now && it.endTime >= now
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -476,12 +463,42 @@ fun BusInfoCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = bus.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = bus.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+
+                        // Live indicator badge
+                        if (hasActiveSchedule) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFFF5722)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "LIVE",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Text(
                         text = "লাইসেন্স নম্বর: ${bus.number}",
                         style = MaterialTheme.typography.bodyMedium,
@@ -513,7 +530,7 @@ fun BusInfoCard(
 
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = Divider)
+                Divider(color = com.example.muritin.ui.theme.Divider)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Column{
@@ -544,7 +561,7 @@ fun BusInfoCard(
                             Text(
                                 buildAnnotatedString {
                                     append("$origin → $dest: ")
-                                    withStyle(style = SpanStyle(color = Primary, fontWeight = FontWeight.Bold)) {   // your blue color
+                                    withStyle(style = SpanStyle(color = Primary, fontWeight = FontWeight.Bold)) {
                                         append("$fare টাকা")
                                     }
                                 },
@@ -552,7 +569,7 @@ fun BusInfoCard(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Divider(
-                                color = Divider,
+                                color = com.example.muritin.ui.theme.Divider,
                                 thickness = 1.dp
                             )
                             Spacer(modifier = Modifier.height(6.dp))
@@ -561,7 +578,7 @@ fun BusInfoCard(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = Divider)
+                Divider(color = com.example.muritin.ui.theme.Divider)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Conductor info
@@ -597,7 +614,7 @@ fun BusInfoCard(
                                 color = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(6.dp))
-                            Divider( color = Divider, thickness = 1.dp )
+                            Divider( color = com.example.muritin.ui.theme.Divider, thickness = 1.dp )
                             Spacer(modifier = Modifier.height(6.dp))
                         }
                     }
@@ -610,6 +627,26 @@ fun BusInfoCard(
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {
+                // Live Tracking Button (only show when active schedule exists)
+                if (hasActiveSchedule) {
+                    Button(
+                        onClick = {
+                            navController.navigate("bus_live_tracking/${bus.busId}")
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF5722),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(Icons.Outlined.MyLocation, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("সরাসরি ট্র্যাকিং দেখুন", fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 val busRatings by produceState<BusRatings?>(initialValue = null, bus.busId) {
                     value = AuthRepository().getBusRatings(bus.busId)
                 }
@@ -683,4 +720,3 @@ fun BusInfoCard(
         }
     }
 }
-
