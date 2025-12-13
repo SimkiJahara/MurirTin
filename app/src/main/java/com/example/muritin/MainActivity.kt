@@ -348,6 +348,26 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+
+
+
+        composable("trip_monitoring_test") {
+            Log.d("AppNavHost", "Navigating to TripMonitoringTestScreen")
+            val user = FirebaseAuth.getInstance().currentUser
+            if (user != null) {
+                TripMonitoringTestScreen(
+                    navController = navController,
+                    user = user
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    Log.d("AppNavHost", "No user, navigating to login")
+                    navController.navigate("login") {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
+            }
+        }
         composable(
             "analytics_report/{busId}",
             arguments = listOf(navArgument("busId") { type = NavType.StringType })

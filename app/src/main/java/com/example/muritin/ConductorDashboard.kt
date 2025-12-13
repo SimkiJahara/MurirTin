@@ -667,6 +667,53 @@ fun ConductorDashboard(
                         )
                     }
 
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // TEST BUTTON - For demonstration
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = RouteOrange.copy(alpha = 0.2f)
+                        ),
+                        onClick = { navController.navigate("trip_monitoring_test") }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.DirectionsBus,
+                                    contentDescription = null,
+                                    tint = RouteOrange,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        "🧪 Test Trip Monitoring",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = RouteOrange
+                                    )
+                                    Text(
+                                        "Simulate fare calculations & auto-completion",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = null,
+                                tint = RouteOrange
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }
