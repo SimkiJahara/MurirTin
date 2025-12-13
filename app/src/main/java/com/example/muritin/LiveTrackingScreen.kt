@@ -1,5 +1,3 @@
-// PART 1 of 3: Enhanced LiveTrackingScreen - Imports and Setup
-// Replace the beginning of your LiveTrackingScreen.kt file with this
 
 package com.example.muritin
 
@@ -64,7 +62,6 @@ fun LiveTrackingScreen(
     var estimatedTime by remember { mutableStateOf(0) }
 
     val pickAndDestLLofBus = remember { mutableStateListOf<PointLocation>() }
-
     val cameraPositionState = rememberCameraPositionState()
 
     // Pulsing animation for live indicator and bus marker
@@ -79,20 +76,18 @@ fun LiveTrackingScreen(
         label = "pulse"
     )
 
-    // Scale animation for bus marker
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.15f,
+        targetValue = 1.2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
+            animation = tween(1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "scale"
     )
 
-    // Calculate distance between two points
     fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val r = 6371.0 // Earth's radius in km
+        val r = 6371.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = sin(dLat / 2) * sin(dLat / 2) +
@@ -102,7 +97,6 @@ fun LiveTrackingScreen(
         return r * c
     }
 
-    // Update estimated metrics
     fun updateEstimates() {
         conductorLocation?.let { busLoc ->
             request?.pickupLatLng?.let { pickup ->
@@ -110,22 +104,18 @@ fun LiveTrackingScreen(
                     busLoc.lat, busLoc.lng,
                     pickup.lat, pickup.lng
                 )
-                // Rough estimate: 30 km/h average speed in city traffic
                 estimatedTime = ((estimatedDistance / 30.0) * 60).toInt()
             }
         }
     }
 
-    // Auto-refresh function
     suspend fun refreshLocation() {
         if (isRefreshing) return
-
         isRefreshing = true
         try {
             request?.conductorId?.let { conductorId ->
                 conductorLocation = AuthRepository().getConductorLocation(conductorId)
                 lastUpdateTime = System.currentTimeMillis()
-
                 conductorLocation?.let { loc ->
                     cameraPositionState.position = CameraPosition.fromLatLngZoom(
                         LatLng(loc.lat, loc.lng),
@@ -141,60 +131,46 @@ fun LiveTrackingScreen(
         }
     }
 
-    // Center on bus location
     fun centerOnBus() {
         conductorLocation?.let {
             scope.launch {
                 cameraPositionState.animate(
                     CameraUpdateFactory.newCameraPosition(
-                        CameraPosition.fromLatLngZoom(
-                            LatLng(it.lat, it.lng),
-                            17f
-                        )
+                        CameraPosition.fromLatLngZoom(LatLng(it.lat, it.lng), 17f)
                     )
                 )
             }
         }
     }
 
-    // Center on pickup location
     fun centerOnPickup() {
         request?.pickupLatLng?.let {
             scope.launch {
                 cameraPositionState.animate(
                     CameraUpdateFactory.newCameraPosition(
-                        CameraPosition.fromLatLngZoom(
-                            LatLng(it.lat, it.lng),
-                            16f
-                        )
+                        CameraPosition.fromLatLngZoom(LatLng(it.lat, it.lng), 16f)
                     )
                 )
             }
         }
     }
 
-    // Show entire route
     fun showFullRoute() {
         scope.launch {
             try {
                 val builder = LatLngBounds.builder()
                 var hasPoints = false
-
                 conductorLocation?.let {
                     builder.include(LatLng(it.lat, it.lng))
                     hasPoints = true
                 }
-
                 pickAndDestLLofBus.forEach { point ->
                     builder.include(LatLng(point.latitude, point.longitude))
                     hasPoints = true
                 }
-
                 if (hasPoints) {
                     val bounds = builder.build()
-                    cameraPositionState.animate(
-                        CameraUpdateFactory.newLatLngBounds(bounds, 150)
-                    )
+                    cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, 150))
                 }
             } catch (e: Exception) {
                 Log.e("LiveTrackingScreen", "Error showing route: ${e.message}")
@@ -202,38 +178,25 @@ fun LiveTrackingScreen(
         }
     }
 
-    // Initial load
     LaunchedEffect(requestId) {
         try {
             val allRequests = AuthRepository().getRequestsForUser(user.uid)
             request = allRequests.find { it.id == requestId }
-
-            // Fetch bus name
             request?.busId?.let { busId ->
                 val bus = AuthRepository().getBus(busId)
                 busName = bus?.name
             }
-
-            // Fetch conductor name
             request?.conductorId?.let { conductorId ->
                 val conductorResult = AuthRepository().getUser(conductorId)
                 conductorName = conductorResult.getOrNull()?.name
-
-                // Get conductor location
                 conductorLocation = AuthRepository().getConductorLocation(conductorId)
                 lastUpdateTime = System.currentTimeMillis()
             }
-
             isLoading = false
-
-            // Load pickup and destination locations
             val busLoc = AuthRepository().getLLofPickupDestofBusForRider(requestId)
             pickAndDestLLofBus.clear()
             pickAndDestLLofBus.addAll(busLoc)
-
-            // Update estimates
             updateEstimates()
-
             conductorLocation?.let { loc ->
                 cameraPositionState.position = CameraPosition.fromLatLngZoom(
                     LatLng(loc.lat, loc.lng),
@@ -246,7 +209,6 @@ fun LiveTrackingScreen(
         }
     }
 
-    // Auto-refresh every 10 seconds
     LaunchedEffect(Unit) {
         while (true) {
             delay(10_000)
@@ -256,12 +218,8 @@ fun LiveTrackingScreen(
         }
     }
 
-    // PART 2 of 3: Enhanced Map Display and Controls
-// Continue from Part 1
-
     Box(modifier = Modifier.fillMaxSize()) {
         if (isLoading) {
-            // Enhanced Loading Screen
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -279,7 +237,6 @@ fun LiveTrackingScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(32.dp)
                 ) {
-                    // Animated bus icon
                     Surface(
                         modifier = Modifier
                             .size(80.dp)
@@ -309,16 +266,10 @@ fun LiveTrackingScreen(
                         color = Color(0xFF2196F3),
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "অনুগ্রহ করে অপেক্ষা করুন",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.Gray
-                    )
                 }
             }
         } else {
-            // Enhanced Google Map
+            // Google Map
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
@@ -335,33 +286,25 @@ fun LiveTrackingScreen(
                     mapToolbarEnabled = false
                 )
             ) {
-                // Draw route polyline between bus and pickup
+                // Route polyline
                 conductorLocation?.let { busLoc ->
                     request?.pickupLatLng?.let { pickup ->
-                        val routePoints = listOf(
-                            LatLng(busLoc.lat, busLoc.lng),
-                            LatLng(pickup.lat, pickup.lng)
-                        )
-
-                        // Dashed line to pickup
                         Polyline(
-                            points = routePoints,
+                            points = listOf(
+                                LatLng(busLoc.lat, busLoc.lng),
+                                LatLng(pickup.lat, pickup.lng)
+                            ),
                             color = Color(0xFF2196F3),
                             width = 10f,
                             geodesic = true,
-                            pattern = listOf(
-                                Dash(30f),
-                                Gap(15f)
-                            )
+                            pattern = listOf(Dash(30f), Gap(15f))
                         )
                     }
                 }
 
-                // Draw route between pickup and destination
                 if (pickAndDestLLofBus.size >= 2) {
                     val pickup = pickAndDestLLofBus[0]
                     val destination = pickAndDestLLofBus[1]
-
                     Polyline(
                         points = listOf(
                             LatLng(pickup.latitude, pickup.longitude),
@@ -370,44 +313,50 @@ fun LiveTrackingScreen(
                         color = Color(0xFF4CAF50),
                         width = 12f,
                         geodesic = true,
-                        pattern = listOf(
-                            Dot(),
-                            Gap(10f)
-                        )
+                        pattern = listOf(Dot(), Gap(10f))
                     )
                 }
 
-                // Enhanced Bus location marker with pulsing circle
+                // ENHANCED BUS MARKER - Multiple pulsing circles + clear label
                 conductorLocation?.let { loc ->
-                    // Pulsing circle around bus
+                    // Large outer pulse
+                    Circle(
+                        center = LatLng(loc.lat, loc.lng),
+                        radius = 120.0,
+                        fillColor = Color(0x222196F3),
+                        strokeColor = Color(0xFF2196F3).copy(alpha = pulseAlpha * 0.5f),
+                        strokeWidth = 3f
+                    )
+
+                    // Medium pulse
                     Circle(
                         center = LatLng(loc.lat, loc.lng),
                         radius = 80.0,
-                        fillColor = Color(0x332196F3),
-                        strokeColor = Color(0xFF2196F3).copy(alpha = pulseAlpha),
+                        fillColor = Color(0x442196F3),
+                        strokeColor = Color(0xFF2196F3).copy(alpha = pulseAlpha * 0.7f),
                         strokeWidth = 4f
                     )
 
+                    // Inner pulse
                     Circle(
                         center = LatLng(loc.lat, loc.lng),
                         radius = 40.0,
-                        fillColor = Color(0x552196F3),
-                        strokeColor = Color(0xFF2196F3),
-                        strokeWidth = 2f
+                        fillColor = Color(0x662196F3),
+                        strokeColor = Color(0xFF2196F3).copy(alpha = pulseAlpha),
+                        strokeWidth = 5f
                     )
 
-                    // Bus marker
+                    // Bus marker with custom info
                     Marker(
                         state = MarkerState(position = LatLng(loc.lat, loc.lng)),
-                        title = "🚌 ${busName ?: "বাস"}",
+                        title = "🚌 ${busName ?: "বাস"} (আপনার বাস এখানে)",
                         snippet = "কন্ডাক্টর: ${conductorName ?: "N/A"}\nশেষ আপডেট: ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(loc.timestamp))}",
                         icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
                     )
                 }
 
-                // Enhanced Pickup location marker
+                // Pickup marker
                 pickAndDestLLofBus.firstOrNull()?.let { pickup ->
-                    // Green circle around pickup
                     Circle(
                         center = LatLng(pickup.latitude, pickup.longitude),
                         radius = 50.0,
@@ -415,22 +364,16 @@ fun LiveTrackingScreen(
                         strokeColor = Color(0xFF4CAF50),
                         strokeWidth = 3f
                     )
-
                     Marker(
-                        state = MarkerState(
-                            position = LatLng(pickup.latitude, pickup.longitude)
-                        ),
+                        state = MarkerState(position = LatLng(pickup.latitude, pickup.longitude)),
                         title = "📍 পিকআপ পয়েন্ট",
                         snippet = pickup.address,
-                        icon = BitmapDescriptorFactory.defaultMarker(
-                            BitmapDescriptorFactory.HUE_GREEN
-                        )
+                        icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
                     )
                 }
 
-                // Enhanced Destination location marker
+                // Destination marker
                 pickAndDestLLofBus.getOrNull(1)?.let { destination ->
-                    // Red circle around destination
                     Circle(
                         center = LatLng(destination.latitude, destination.longitude),
                         radius = 50.0,
@@ -438,25 +381,20 @@ fun LiveTrackingScreen(
                         strokeColor = Color(0xFFF44336),
                         strokeWidth = 3f
                     )
-
                     Marker(
-                        state = MarkerState(
-                            position = LatLng(destination.latitude, destination.longitude)
-                        ),
+                        state = MarkerState(position = LatLng(destination.latitude, destination.longitude)),
                         title = "🏁 গন্তব্য",
                         snippet = destination.address,
-                        icon = BitmapDescriptorFactory.defaultMarker(
-                            BitmapDescriptorFactory.HUE_RED
-                        )
+                        icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
                     )
                 }
             }
 
-            // Enhanced Top Bar with Gradient
+            // FIXED: Enhanced Top Bar with proper height for visibility
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp),
+                    .height(180.dp), // Increased from 140dp
                 color = Color.Transparent
             ) {
                 Box(
@@ -477,13 +415,12 @@ fun LiveTrackingScreen(
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        // Top row with back and refresh
+                        // Top controls row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Back button
                             IconButton(
                                 onClick = { navController.navigateUp() },
                                 modifier = Modifier
@@ -491,14 +428,9 @@ fun LiveTrackingScreen(
                                     .background(Color.White, CircleShape)
                                     .shadow(6.dp, CircleShape)
                             ) {
-                                Icon(
-                                    Icons.Default.ArrowBack,
-                                    contentDescription = "Back",
-                                    tint = Color.Black
-                                )
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
                             }
 
-                            // Live indicator with pulse
                             Surface(
                                 shape = RoundedCornerShape(24.dp),
                                 color = Color.White,
@@ -511,10 +443,7 @@ fun LiveTrackingScreen(
                                     Box(
                                         modifier = Modifier
                                             .size(14.dp)
-                                            .background(
-                                                Color(0xFFFF5252).copy(alpha = pulseAlpha),
-                                                CircleShape
-                                            )
+                                            .background(Color(0xFFFF5252).copy(alpha = pulseAlpha), CircleShape)
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
@@ -526,7 +455,6 @@ fun LiveTrackingScreen(
                                 }
                             }
 
-                            // Refresh button
                             IconButton(
                                 onClick = { scope.launch { refreshLocation() } },
                                 modifier = Modifier
@@ -542,16 +470,50 @@ fun LiveTrackingScreen(
                                         color = Color(0xFF2196F3)
                                     )
                                 } else {
-                                    Icon(
-                                        Icons.Default.Refresh,
-                                        contentDescription = "Refresh",
-                                        tint = Color.Black
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color.Black)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // NEW: Bus Location Indicator Badge
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF2196F3),
+                            modifier = Modifier.shadow(4.dp, RoundedCornerShape(16.dp))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.DirectionsBus,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "নীল পালসিং বৃত্ত = আপনার বাস",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "মানচিত্রে নীল চিহ্ন দেখুন",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.9f)
                                     )
                                 }
                             }
                         }
 
-                        // Trip status with estimated time
+                        // Estimated time/distance info (NOW VISIBLE)
                         if (request?.status == "Accepted" && estimatedDistance > 0) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Surface(
@@ -566,7 +528,6 @@ fun LiveTrackingScreen(
                                     horizontalArrangement = Arrangement.SpaceEvenly,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Distance
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Icon(
                                             Icons.Default.Route,
@@ -592,7 +553,6 @@ fun LiveTrackingScreen(
                                         color = Color.LightGray
                                     )
 
-                                    // Estimated time
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Icon(
                                             Icons.Default.Schedule,
@@ -618,129 +578,44 @@ fun LiveTrackingScreen(
                     }
                 }
             }
-            // PART 3 of 3: Info Cards, Controls and Helper Components
-// Continue from Part 2
 
-            // Enhanced Control Panel (Right side)
+            // Control Panel (Right side) - keeping your existing controls
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Center on bus
                 FloatingActionButton(
                     onClick = { centerOnBus() },
                     modifier = Modifier.size(56.dp),
                     containerColor = Color.White,
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    )
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp)
                 ) {
-                    Icon(
-                        Icons.Default.MyLocation,
-                        contentDescription = "বাসে কেন্দ্র করুন",
-                        tint = Color(0xFF2196F3),
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Icon(Icons.Default.MyLocation, contentDescription = "বাসে কেন্দ্র করুন",
+                        tint = Color(0xFF2196F3), modifier = Modifier.size(28.dp))
                 }
 
-                // Center on pickup
                 FloatingActionButton(
                     onClick = { centerOnPickup() },
                     modifier = Modifier.size(56.dp),
-                    containerColor = Color.White,
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    )
+                    containerColor = Color.White
                 ) {
-                    Icon(
-                        Icons.Default.PinDrop,
-                        contentDescription = "পিকআপে কেন্দ্র করুন",
-                        tint = Color(0xFF4CAF50),
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Icon(Icons.Default.PinDrop, contentDescription = "পিকআপে কেন্দ্র করুন",
+                        tint = Color(0xFF4CAF50), modifier = Modifier.size(28.dp))
                 }
 
-                // Show full route
                 FloatingActionButton(
                     onClick = { showFullRoute() },
                     modifier = Modifier.size(56.dp),
-                    containerColor = Color.White,
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    )
-                ) {
-                    Icon(
-                        Icons.Default.Route,
-                        contentDescription = "সম্পূর্ণ রুট দেখুন",
-                        tint = Color(0xFFFF9800),
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Zoom in
-                FloatingActionButton(
-                    onClick = {
-                        scope.launch {
-                            cameraPositionState.animate(CameraUpdateFactory.zoomIn())
-                        }
-                    },
-                    modifier = Modifier.size(48.dp),
                     containerColor = Color.White
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Zoom In", tint = Color.Black)
-                }
-
-                // Zoom out
-                FloatingActionButton(
-                    onClick = {
-                        scope.launch {
-                            cameraPositionState.animate(CameraUpdateFactory.zoomOut())
-                        }
-                    },
-                    modifier = Modifier.size(48.dp),
-                    containerColor = Color.White
-                ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = Color.Black)
-                }
-
-                // Map type toggle
-                FloatingActionButton(
-                    onClick = {
-                        selectedMapType = when (selectedMapType) {
-                            MapType.NORMAL -> MapType.SATELLITE
-                            MapType.SATELLITE -> MapType.HYBRID
-                            MapType.HYBRID -> MapType.TERRAIN
-                            else -> MapType.NORMAL
-                        }
-                    },
-                    modifier = Modifier.size(48.dp),
-                    containerColor = Color.White
-                ) {
-                    Icon(Icons.Default.Layers, contentDescription = "Map Type", tint = Color.Black)
-                }
-
-                // Traffic toggle
-                FloatingActionButton(
-                    onClick = { showTrafficLayer = !showTrafficLayer },
-                    modifier = Modifier.size(48.dp),
-                    containerColor = if (showTrafficLayer) Color(0xFFFF5722) else Color.White
-                ) {
-                    Icon(
-                        Icons.Default.Traffic,
-                        contentDescription = "Traffic",
-                        tint = if (showTrafficLayer) Color.White else Color.Black
-                    )
+                    Icon(Icons.Default.Route, contentDescription = "সম্পূর্ণ রুট দেখুন",
+                        tint = Color(0xFFFF9800), modifier = Modifier.size(28.dp))
                 }
             }
 
-            // Enhanced Bottom Info Card
+            // Bottom Info Card (your existing card - keeping it as is)
             AnimatedVisibility(
                 visible = showInfoCard && request != null,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -752,132 +627,53 @@ fun LiveTrackingScreen(
                         .fillMaxWidth()
                         .padding(16.dp),
                     shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
                     elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
                 ) {
                     Column(modifier = Modifier.padding(24.dp)) {
-                        // Header with status and OTP
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                // Status badge
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = when (request?.status) {
                                         "Accepted" -> Color(0xFF4CAF50).copy(alpha = 0.15f)
-                                        "Pending" -> Color(0xFFFF9800).copy(alpha = 0.15f)
-                                        "Completed" -> Color(0xFF2196F3).copy(alpha = 0.15f)
                                         else -> Color.LightGray.copy(alpha = 0.15f)
                                     }
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            when (request?.status) {
-                                                "Accepted" -> Icons.Default.CheckCircle
-                                                "Pending" -> Icons.Default.Schedule
-                                                "Completed" -> Icons.Default.Done
-                                                else -> Icons.Default.Info
-                                            },
-                                            contentDescription = null,
-                                            tint = when (request?.status) {
-                                                "Accepted" -> Color(0xFF4CAF50)
-                                                "Pending" -> Color(0xFFFF9800)
-                                                "Completed" -> Color(0xFF2196F3)
-                                                else -> Color.Gray
-                                            },
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                    Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null,
+                                            tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = when (request?.status) {
-                                                "Accepted" -> "গৃহীত"
-                                                "Pending" -> "অপেক্ষমাণ"
-                                                "Completed" -> "সম্পন্ন"
-                                                else -> request?.status ?: "N/A"
-                                            },
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = when (request?.status) {
-                                                "Accepted" -> Color(0xFF4CAF50)
-                                                "Pending" -> Color(0xFFFF9800)
-                                                "Completed" -> Color(0xFF2196F3)
-                                                else -> Color.Gray
-                                            }
-                                        )
+                                        Text("গৃহীত", style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
                                     }
                                 }
 
-                                // OTP if available
                                 request?.otp?.let { otp ->
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFF2196F3).copy(alpha = 0.1f),
-                                        modifier = Modifier.border(
-                                            2.dp,
-                                            Color(0xFF2196F3).copy(alpha = 0.3f),
-                                            RoundedCornerShape(12.dp)
-                                        )
+                                        color = Color(0xFF2196F3).copy(alpha = 0.1f)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Lock,
-                                                contentDescription = null,
-                                                tint = Color(0xFF2196F3),
-                                                modifier = Modifier.size(20.dp)
-                                            )
+                                        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                                            Icon(Icons.Default.Lock, contentDescription = null,
+                                                tint = Color(0xFF2196F3), modifier = Modifier.size(20.dp))
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column {
-                                                Text(
-                                                    text = "আপনার OTP কোড",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = Color.Gray
-                                                )
-                                                Text(
-                                                    text = otp,
-                                                    style = MaterialTheme.typography.titleLarge,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color(0xFF2196F3),
-                                                    letterSpacing = 4.dp.value.sp
-                                                )
+                                                Text("আপনার OTP কোড",
+                                                    style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                                Text(otp, style = MaterialTheme.typography.titleLarge,
+                                                    fontWeight = FontWeight.ExtraBold, color = Color(0xFF2196F3))
                                             }
                                         }
                                     }
                                 }
                             }
-
-                            // Expand/Collapse button
-                            Column(horizontalAlignment = Alignment.End) {
-                                IconButton(
-                                    onClick = { showTripDetails = !showTripDetails }
-                                ) {
-                                    Icon(
-                                        if (showTripDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = "Details",
-                                        tint = Color(0xFF2196F3)
-                                    )
-                                }
-
-                                IconButton(
-                                    onClick = { showInfoCard = false }
-                                ) {
-                                    Icon(
-                                        Icons.Default.KeyboardArrowDown,
-                                        contentDescription = "Minimize",
-                                        tint = Color.Gray
-                                    )
-                                }
+                            IconButton(onClick = { showInfoCard = false }) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Minimize", tint = Color.Gray)
                             }
                         }
 
@@ -885,152 +681,25 @@ fun LiveTrackingScreen(
                         HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Quick Info Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            QuickInfoCard(
-                                icon = Icons.Default.DirectionsBus,
-                                label = "বাস",
-                                value = busName ?: "...",
-                                color = Color(0xFF2196F3)
-                            )
-
-                            QuickInfoCard(
-                                icon = Icons.Default.Person,
-                                label = "কন্ডাক্টর",
-                                value = conductorName?.take(10) ?: "...",
-                                color = Color(0xFF4CAF50)
-                            )
-
+                            QuickInfoCard(Icons.Default.DirectionsBus, "বাস", busName ?: "...", Color(0xFF2196F3))
+                            QuickInfoCard(Icons.Default.Person, "কন্ডাক্টর",
+                                conductorName?.take(10) ?: "...", Color(0xFF4CAF50))
                             request?.fare?.let { fare ->
-                                QuickInfoCard(
-                                    icon = Icons.Default.AccountBalanceWallet,
-                                    label = "ভাড়া",
-                                    value = "৳$fare",
-                                    color = Color(0xFFFF9800)
-                                )
-                            }
-                        }
-
-                        // Expandable Trip Details
-                        AnimatedVisibility(visible = showTripDetails) {
-                            Column {
-                                Spacer(modifier = Modifier.height(20.dp))
-                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                                Spacer(modifier = Modifier.height(20.dp))
-
-                                Text(
-                                    "যাত্রা বিস্তারিত",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2196F3)
-                                )
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                request?.let { req ->
-                                    EnhancedTripDetailRow(
-                                        icon = Icons.Default.LocationOn,
-                                        label = "পিকআপ পয়েন্ট",
-                                        value = req.pickup,
-                                        color = Color(0xFF4CAF50)
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    EnhancedTripDetailRow(
-                                        icon = Icons.Default.Flag,
-                                        label = "গন্তব্য",
-                                        value = req.destination,
-                                        color = Color(0xFFF44336)
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    req.seats?.let { seats ->
-                                        EnhancedTripDetailRow(
-                                            icon = Icons.Default.EventSeat,
-                                            label = "সিট সংখ্যা",
-                                            value = "$seats টি",
-                                            color = Color(0xFF9C27B0)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Last Update Time
-                        if (lastUpdateTime > 0) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFE8F5E9)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Update,
-                                        contentDescription = null,
-                                        tint = Color(0xFF4CAF50),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = "শেষ আপডেট",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.Gray
-                                        )
-                                        Text(
-                                            text = SimpleDateFormat("hh:mm:ss a", Locale.getDefault())
-                                                .format(Date(lastUpdateTime)),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF4CAF50)
-                                        )
-                                    }
-                                }
+                                QuickInfoCard(Icons.Default.AccountBalanceWallet, "ভাড়া",
+                                    "৳$fare", Color(0xFFFF9800))
                             }
                         }
                     }
-                }
-            }
-
-            // Floating action button to show info when minimized
-            AnimatedVisibility(
-                visible = !showInfoCard && request != null,
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp)
-            ) {
-                FloatingActionButton(
-                    onClick = { showInfoCard = true },
-                    containerColor = Color(0xFF2196F3),
-                    contentColor = Color.White,
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    ),
-                    modifier = Modifier.size(64.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = "Show Info",
-                        modifier = Modifier.size(32.dp)
-                    )
                 }
             }
         }
     }
 }
 
-// Enhanced Quick Info Card Component
 @Composable
 fun QuickInfoCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -1038,125 +707,15 @@ fun QuickInfoCard(
     value: String,
     color: Color
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(100.dp)
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = color.copy(alpha = 0.15f),
-            modifier = Modifier.size(56.dp)
-        ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(100.dp)) {
+        Surface(shape = CircleShape, color = color.copy(alpha = 0.15f), modifier = Modifier.size(56.dp)) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(28.dp))
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.Gray,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.Black,
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
-    }
-}
-
-// Enhanced Trip Detail Row Component
-@Composable
-fun EnhancedTripDetailRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String,
-    color: Color
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = color.copy(alpha = 0.15f),
-            modifier = Modifier.size(48.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.Gray
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black,
-                maxLines = 2
-            )
-        }
-    }
-}
-
-// Keep original TripDetailRow for backward compatibility
-@Composable
-fun TripDetailRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-            modifier = Modifier.size(40.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.Center)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+            color = Color.Black, textAlign = TextAlign.Center, maxLines = 1)
     }
 }
