@@ -390,6 +390,13 @@ fun RequestCard(
                 )
             }
 
+            // In MyRequestsScreen RequestCard
+            FareDisplayCard(request = request)
+
+// Or compact version for lists
+            CompactFareDisplay(request = request)
+
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Ride Status Indicator (if travelling)

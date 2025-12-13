@@ -398,6 +398,7 @@ fun AppNavHost(navController: NavHostController) {
                 }
             }
         }
+
         composable("chat/{requestId}") { backStackEntry ->
             val requestId = backStackEntry.arguments?.getString("requestId") ?: ""
             Log.d("AppNavHost", "Opening ChatScreen for requestId = $requestId")

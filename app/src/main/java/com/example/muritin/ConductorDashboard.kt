@@ -343,6 +343,7 @@ fun ConductorDashboard(
                         tint = Error
                     )
                     Spacer(modifier = Modifier.height(16.dp))
+
                     Text(
                         "অননুমোদিত প্রবেশ",
                         style = MaterialTheme.typography.headlineMedium,

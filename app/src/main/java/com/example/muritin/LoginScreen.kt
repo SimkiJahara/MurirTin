@@ -420,6 +420,7 @@ fun LoginScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
+
                             Column {
                                 Text(
                                     "সাহায্য প্রয়োজন?",

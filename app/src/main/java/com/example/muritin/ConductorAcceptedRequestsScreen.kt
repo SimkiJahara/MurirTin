@@ -417,6 +417,11 @@ fun ConductorRequestCard(
                         }
                     }
                 }
+
+                // In ConductorRequestCard
+                FareDisplayCard(request = request)
+
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // AUTO-MONITORING INDICATOR

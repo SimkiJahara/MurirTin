@@ -59,6 +59,7 @@ fun HelpScreen(navController: NavHostController) {
         title: String,
         steps: List<String>
     ) {
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
