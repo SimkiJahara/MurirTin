@@ -237,8 +237,7 @@ fun BusLiveTrackingScreen(
             }
         }
     }
-    // PART 2 of 3: Map Display and Controls (Lines 251-500)
-// Continue from Part 1
+
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Map Display
@@ -584,10 +583,8 @@ fun BusLiveTrackingScreen(
                 }
             }
         }
-        // PART 3 of 3: Info Cards and Helper Functions (Lines 501-end)
-// Continue from Part 2
 
-        // Enhanced Info Card at bottom
+
         AnimatedVisibility(
             visible = showInfoCard && !isLoading && error == null,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),

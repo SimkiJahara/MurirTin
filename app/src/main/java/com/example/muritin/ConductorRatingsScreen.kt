@@ -372,8 +372,7 @@ private fun ConductorRatingsContent(
         }
     }
 }
-// Part 2: Individual Component Designs
-// Add this to the same file (ConductorRatingsScreen.kt)
+
 
 @Composable
 private fun ConductorProfileCard(conductor: User?) {
@@ -811,8 +810,7 @@ private fun calculateRatingDistribution(reviews: List<ReviewSummary>): Map<Int, 
 
     return distribution
 }
-// Part 3: Review Cards and Supporting Components
-// Add this to the same file (ConductorRatingsScreen.kt)
+
 
 @Composable
 private fun EnhancedReviewCard(review: ReviewSummary) {
@@ -1118,8 +1116,7 @@ fun RatingDisplay1(rating: Float, totalRatings: Int? = null) {
 fun ReviewCard(review: ReviewSummary) {
     EnhancedReviewCard(review = review)
 }
-// Part 4: Enhanced BusRatingsScreen
-// Add this to the same file (ConductorRatingsScreen.kt)
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -92,7 +92,7 @@ class AuthRepository {
                 throw Exception("আপনার ইমেইল যাচাই করা হয়নি। দয়া করে আপনার ইমেইল চেক করুন এবং যাচাই লিঙ্কে ক্লিক করুন।")
             }
             try {
-                //CLean expired schedule and request whenever someone logs in
+
                 cleanExpiredSchedules()
                 cleanExpiredRequests()
             } catch (e: Exception) {
@@ -2070,7 +2070,7 @@ class AuthRepository {
         }
     }
 
-    // Helper function (already exists but ensuring it's here)
+
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371 // Radius of Earth in kilometers
         val dLat = Math.toRadians(lat2 - lat1)
@@ -2082,7 +2082,7 @@ class AuthRepository {
         return r * c
     }
 
-    // Replace the updateConductorRatings function in AuthRepository.kt
+
 
     private suspend fun updateConductorRatings(conductorId: String) {
         try {

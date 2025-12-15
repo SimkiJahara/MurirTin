@@ -19,9 +19,6 @@ import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
 
-/**
- * FIXED: Improved trip monitoring with better destination detection
- */
 class TripMonitoringService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())

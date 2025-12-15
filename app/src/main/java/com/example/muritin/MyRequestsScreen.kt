@@ -265,9 +265,7 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
         }
     }
 }
-// ============================================
-// PART 2: RequestCard Component
-// ============================================
+
 
 @Composable
 fun RequestCard(
@@ -740,9 +738,7 @@ fun RequestCard(
         }
     }
 }
-// ============================================
-// PART 3: LiveDistanceDisplay Component
-// ============================================
+
 
 @Composable
 fun LiveDistanceDisplay(

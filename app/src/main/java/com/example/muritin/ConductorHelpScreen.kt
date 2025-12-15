@@ -456,8 +456,7 @@ fun WarningCard(
         }
     }
 }
-// Part 2: Schedule and Request Management Content
-// Add to ConductorHelpScreen.kt
+
 
 @Composable
 fun ScheduleHelpContent() {
@@ -619,8 +618,7 @@ fun RequestManagementHelpContent() {
         )
     }
 }
-// Part 3: Location, Chat and OTP Content
-// Add to ConductorHelpScreen.kt
+
 
 @Composable
 fun LocationUpdateHelpContent() {

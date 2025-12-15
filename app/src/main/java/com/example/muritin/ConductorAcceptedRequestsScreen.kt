@@ -328,8 +328,7 @@ fun ConductorAcceptedRequestsScreen(
         )
     }
 }
-// Replace the ConductorRequestCard in ConductorAcceptedRequestsScreen.kt
-// This version removes manual fare collection buttons since everything is automatic
+
 
 @Composable
 fun ConductorRequestCard(
@@ -418,7 +417,7 @@ fun ConductorRequestCard(
                     }
                 }
 
-                // In ConductorRequestCard
+
                 FareDisplayCard(request = request)
 
 
