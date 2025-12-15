@@ -1,7 +1,11 @@
 package com.example.muritin
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
 import android.net.Uri
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -25,12 +29,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.app.ActivityCompat
 import androidx.navigation.NavHostController
 import com.example.muritin.ui.theme.*
 import com.firebase.geofire.GeoFireUtils
 import com.firebase.geofire.GeoLocation
+import com.google.android.gms.location.*
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -258,7 +265,9 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
         }
     }
 }
-// Replace the RequestCard composable in MyRequestsScreen.kt with this updated version
+// ============================================
+// PART 2: RequestCard Component
+// ============================================
 
 @Composable
 fun RequestCard(
@@ -298,7 +307,7 @@ fun RequestCard(
 
             Toast.makeText(
                 context,
-                "Automatic trip monitoring started",
+                "স্বয়ংক্রিয় যাত্রা পর্যবেক্ষণ শুরু হয়েছে",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -390,18 +399,20 @@ fun RequestCard(
                 )
             }
 
-            // In MyRequestsScreen RequestCard
-            FareDisplayCard(request = request)
+            Spacer(modifier = Modifier.height(16.dp))
 
-// Or compact version for lists
+            // Fare Display
             CompactFareDisplay(request = request)
-
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Ride Status Indicator (if travelling)
             if (request.rideStatus?.inBusTravelling == true) {
                 RideStatusCard(request.rideStatus)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ✅ NEW: Live Distance Display
+                LiveDistanceDisplay(request = request)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Auto-monitoring info card
@@ -580,8 +591,7 @@ fun RequestCard(
             // Action Buttons
             Spacer(modifier = Modifier.height(16.dp))
 
-            // NO MORE MANUAL ARRIVAL CONFIRMATION - All automatic now!
-            // Just show the monitoring status
+            // Monitoring status (if travelling)
             if (request.rideStatus?.inBusTravelling == true &&
                 request.rideStatus.tripCompleted != true) {
 
@@ -730,6 +740,243 @@ fun RequestCard(
         }
     }
 }
+// ============================================
+// PART 3: LiveDistanceDisplay Component
+// ============================================
+
+@Composable
+fun LiveDistanceDisplay(
+    request: Request,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var currentLocation by remember { mutableStateOf<Location?>(null) }
+    var distanceToDestination by remember { mutableStateOf<Double?>(null) }
+    val fusedLocationClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    // Location callback for real-time updates
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                result.lastLocation?.let { location ->
+                    currentLocation = location
+
+                    // Calculate distance to destination
+                    request.destinationLatLng?.let { dest ->
+                        val distance = calculateDistanceInKm(
+                            location.latitude,
+                            location.longitude,
+                            dest.lat,
+                            dest.lng
+                        )
+                        distanceToDestination = distance
+
+                        Log.d("LiveDistance", "Distance to ${request.destination}: ${String.format("%.2f", distance)}km")
+                    }
+                }
+            }
+        }
+    }
+
+    // Start/stop location updates
+    DisposableEffect(Unit) {
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val locationRequest = LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                5000 // Update every 5 seconds
+            ).apply {
+                setMinUpdateIntervalMillis(3000)
+            }.build()
+
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+        }
+
+        onDispose {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
+    }
+
+    // Display card
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                distanceToDestination == null -> Color(0xFFFFF3E0)
+                distanceToDestination!! < 0.1 -> Color(0xFFE8F5E9) // Green - Very close (<100m)
+                distanceToDestination!! < 0.5 -> Color(0xFFFFF9C4) // Yellow - Close (<500m)
+                else -> Color(0xFFE3F2FD) // Blue - Far
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left side - Icon and destination
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    Icons.Filled.NearMe,
+                    contentDescription = null,
+                    tint = when {
+                        distanceToDestination == null -> RouteOrange
+                        distanceToDestination!! < 0.1 -> RouteGreen
+                        distanceToDestination!! < 0.5 -> RouteOrange
+                        else -> RouteBlue
+                    },
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "গন্তব্য পর্যন্ত দূরত্ব",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Text(
+                        request.destination,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // Right side - Distance number
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                if (distanceToDestination != null) {
+                    Row(
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Text(
+                            text = when {
+                                distanceToDestination!! < 0.1 -> {
+                                    // Show in meters when less than 100m
+                                    "${(distanceToDestination!! * 1000).toInt()}"
+                                }
+                                distanceToDestination!! < 1.0 -> {
+                                    // Show 1 decimal for 100m-1km
+                                    String.format("%.1f", distanceToDestination!!)
+                                }
+                                else -> {
+                                    // Show 2 decimals for 1km+
+                                    String.format("%.2f", distanceToDestination!!)
+                                }
+                            },
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = when {
+                                distanceToDestination!! < 0.1 -> RouteGreen
+                                distanceToDestination!! < 0.5 -> RouteOrange
+                                else -> RouteBlue
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (distanceToDestination!! < 0.1) "মি" else "কিমি",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextSecondary
+                        )
+                    }
+
+                    // Status text
+                    Text(
+                        text = when {
+                            distanceToDestination!! < 0.1 -> "খুব কাছে! 🎯"
+                            distanceToDestination!! < 0.5 -> "প্রায় পৌঁছেছেন"
+                            distanceToDestination!! < 2.0 -> "আসছেন"
+                            else -> "চলছেন"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when {
+                            distanceToDestination!! < 0.1 -> RouteGreen
+                            distanceToDestination!! < 0.5 -> RouteOrange
+                            else -> TextSecondary
+                        },
+                        fontWeight = if (distanceToDestination!! < 0.1) FontWeight.Bold else FontWeight.Normal
+                    )
+                } else {
+                    // Loading state
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            strokeWidth = 3.dp,
+                            color = RouteBlue
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "হিসাব করা হচ্ছে...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Arrival alert when very close
+    if (distanceToDestination != null && distanceToDestination!! < 0.15) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = RouteGreen.copy(alpha = 0.1f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = RouteGreen,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "আপনি গন্তব্যে পৌঁছে গেছেন!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = RouteGreen
+                    )
+                    Text(
+                        "যাত্রা স্বয়ংক্রিয়ভাবে সম্পূর্ণ হবে",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+// ============================================
+// PART 4: Supporting Components
+// ============================================
 
 @Composable
 fun ConductorInfoCard(
@@ -952,439 +1199,6 @@ fun RideStatusCard(rideStatus: RideStatus) {
 }
 
 @Composable
-fun ExitOptionsDialog(
-    request: Request,
-    onDismiss: () -> Unit,
-    onEarlyExit: (String, LatLngData) -> Unit,
-    onLateExit: (String, LatLngData) -> Unit
-) {
-    var selectedOption by remember { mutableStateOf<String?>(null) }
-    var selectedStop by remember { mutableStateOf<PointLocation?>(null) }
-    var availableStops by remember { mutableStateOf<List<PointLocation>>(emptyList()) }
-    var isLoadingStops by remember { mutableStateOf(false) }
-    var estimatedFare by remember { mutableStateOf<Int?>(null) }
-    val scope = rememberCoroutineScope()
-
-    // Load available stops when option is selected
-    LaunchedEffect(selectedOption, request.busId) {
-        if (selectedOption != null && request.busId != null) {
-            isLoadingStops = true
-            try {
-                val bus = AuthRepository().getBus(request.busId)
-                val route = bus?.route
-
-                if (route != null) {
-                    val stops = mutableListOf<PointLocation>()
-
-                    // Get pickup and destination indices
-                    val pickupGeoHash = request.pickupLatLng?.let {
-                        GeoFireUtils.getGeoHashForLocation(
-                            GeoLocation(it.lat, it.lng), 5
-                        )
-                    }
-                    val destGeoHash = request.destinationLatLng?.let {
-                        GeoFireUtils.getGeoHashForLocation(
-                            GeoLocation(it.lat, it.lng), 5
-                        )
-                    }
-
-                    // Find pickup index in route
-                    var pickupIndex = -1
-                    if (route.originLoc?.geohash == pickupGeoHash) {
-                        pickupIndex = -1 // Before all stops
-                    } else {
-                        route.stopPointsLoc.forEachIndexed { index, stop ->
-                            if (stop.geohash == pickupGeoHash) {
-                                pickupIndex = index
-                            }
-                        }
-                    }
-
-                    // Find destination index
-                    var destIndex = -1
-                    route.stopPointsLoc.forEachIndexed { index, stop ->
-                        if (stop.geohash == destGeoHash) {
-                            destIndex = index
-                        }
-                    }
-                    if (route.destinationLoc?.geohash == destGeoHash) {
-                        destIndex = route.stopPointsLoc.size
-                    }
-
-                    when (selectedOption) {
-                        "early" -> {
-                            // Show stops between pickup and destination
-                            if (pickupIndex == -1) {
-                                // Pickup is origin, show all stops before destination
-                                route.stopPointsLoc.forEachIndexed { index, stop ->
-                                    if (index < destIndex) {
-                                        stops.add(stop)
-                                    }
-                                }
-                            } else {
-                                // Show stops between pickup and destination
-                                route.stopPointsLoc.forEachIndexed { index, stop ->
-                                    if (index > pickupIndex && index < destIndex) {
-                                        stops.add(stop)
-                                    }
-                                }
-                            }
-                        }
-                        "late" -> {
-                            // Show stops after destination
-                            if (destIndex < route.stopPointsLoc.size) {
-                                route.stopPointsLoc.forEachIndexed { index, stop ->
-                                    if (index > destIndex) {
-                                        stops.add(stop)
-                                    }
-                                }
-                                // Add final destination if not already there
-                                route.destinationLoc?.let { stops.add(it) }
-                            }
-                        }
-                    }
-
-                    availableStops = stops
-                }
-            } catch (e: Exception) {
-                Log.e("ExitOptionsDialog", "Failed to load stops: ${e.message}")
-            }
-            isLoadingStops = false
-        }
-    }
-
-    // Calculate estimated fare when stop is selected
-    LaunchedEffect(selectedStop, request.pickupLatLng) {
-        if (selectedStop != null && request.pickupLatLng != null) {
-            try {
-                val pickupLat = request.pickupLatLng.lat
-                val pickupLng = request.pickupLatLng.lng
-                val stopLat = selectedStop!!.latitude
-                val stopLng = selectedStop!!.longitude
-
-                // Calculate distance using haversine formula
-                val distance = calculateDistance(pickupLat, pickupLng, stopLat, stopLng)
-
-                // Base fare calculation: 10 taka per km, minimum 20 taka
-                val baseFare = (distance * 10).toInt().coerceAtLeast(20)
-                estimatedFare = baseFare * request.seats
-
-            } catch (e: Exception) {
-                Log.e("ExitOptionsDialog", "Failed to calculate fare: ${e.message}")
-            }
-        } else {
-            estimatedFare = null
-        }
-    }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp)
-            ) {
-                Text(
-                    text = "নামার অপশন",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "আপনি কি আগে নামতে চান, নাকি পরে?",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Early Exit Option
-                Card(
-                    onClick = {
-                        selectedOption = "early"
-                        selectedStop = null
-                        estimatedFare = null
-                    },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selectedOption == "early")
-                            RouteOrange.copy(alpha = 0.1f)
-                        else Color.White
-                    ),
-                    border = if (selectedOption == "early")
-                        CardDefaults.outlinedCardBorder()
-                    else null,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.RemoveCircle,
-                            contentDescription = null,
-                            tint = RouteOrange
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                "আগে নামব",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "মূল গন্তব্যের আগে নামতে চাই",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Late Exit Option
-                Card(
-                    onClick = {
-                        selectedOption = "late"
-                        selectedStop = null
-                        estimatedFare = null
-                    },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selectedOption == "late")
-                            RouteBlue.copy(alpha = 0.1f)
-                        else Color.White
-                    ),
-                    border = if (selectedOption == "late")
-                        CardDefaults.outlinedCardBorder()
-                    else null,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.AddCircle,
-                            contentDescription = null,
-                            tint = RouteBlue
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column ( modifier = Modifier.verticalScroll(rememberScrollState())){
-                            Text(
-                                "পরে নামব",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "মূল গন্তব্যের পরে নামতে চাই",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                }
-
-                // Show available stops if option is selected
-                if (selectedOption != null) {
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "স্টপেজ নির্বাচন করুন",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (isLoadingStops) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(100.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                color = if (selectedOption == "early") RouteOrange else RouteBlue
-                            )
-                        }
-                    } else if (availableStops.isEmpty()) {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = Error.copy(alpha = 0.1f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Filled.Info,
-                                    contentDescription = null,
-                                    tint = Error,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    "কোনো স্টপেজ উপলব্ধ নেই",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 200.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(availableStops) { stop ->
-                                Card(
-                                    onClick = { selectedStop = stop },
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (selectedStop == stop)
-                                            (if (selectedOption == "early") RouteOrange else RouteBlue).copy(alpha = 0.1f)
-                                        else Color(0xFFF5F5F5)
-                                    ),
-                                    border = if (selectedStop == stop)
-                                        CardDefaults.outlinedCardBorder()
-                                    else null,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.LocationOn,
-                                            contentDescription = null,
-                                            tint = if (selectedStop == stop)
-                                                (if (selectedOption == "early") RouteOrange else RouteBlue)
-                                            else TextSecondary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Text(
-                                            stop.address,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = TextPrimary,
-                                            fontWeight = if (selectedStop == stop) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Show estimated fare if stop is selected
-                if (estimatedFare != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = RouteGreen.copy(alpha = 0.1f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    "আনুমানিক ভাড়া",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                                Text(
-                                    "৳$estimatedFare",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = RouteGreen
-                                )
-                                Text(
-                                    "পূর্বের ভাড়া: ৳${request.fare}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                            }
-                            Icon(
-                                Icons.Filled.Payment,
-                                contentDescription = null,
-                                tint = RouteGreen,
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("বাতিল")
-                    }
-
-                    Button(
-                        onClick = {
-                            if (selectedStop != null) {
-                                val latLng = LatLngData(
-                                    selectedStop!!.latitude,
-                                    selectedStop!!.longitude
-                                )
-                                when (selectedOption) {
-                                    "early" -> onEarlyExit(selectedStop!!.address, latLng)
-                                    "late" -> onLateExit(selectedStop!!.address, latLng)
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = selectedStop != null,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = when (selectedOption) {
-                                "early" -> RouteOrange
-                                "late" -> RouteBlue
-                                else -> TextSecondary
-                            }
-                        )
-                    ) {
-                        Text("নিশ্চিত করুন")
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Helper function to calculate distance between two points
-private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-    val r = 6371 // Radius of Earth in kilometers
-    val dLat = Math.toRadians(lat2 - lat1)
-    val dLon = Math.toRadians(lon2 - lon1)
-    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2)
-    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return r * c
-}
-
-@Composable
 fun TripRouteRow(
     icon: ImageVector,
     label: String,
@@ -1459,6 +1273,7 @@ fun TripDetailChip(
     }
 }
 
+// Helper function
 private fun formatTimestamp(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
@@ -1469,4 +1284,16 @@ private fun formatTimestamp(timestamp: Long): String {
         diff < 86400000 -> SimpleDateFormat("h:mm a", Locale.US).format(Date(timestamp))
         else -> SimpleDateFormat("MMM d, h:mm a", Locale.US).format(Date(timestamp))
     }
+}
+
+// Helper function for distance calculation
+private fun calculateDistanceInKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6371.0 // Earth radius in km
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return r * c
 }

@@ -15,19 +15,12 @@ import androidx.core.app.NotificationCompat
 import com.firebase.geofire.GeoFireUtils
 import com.firebase.geofire.GeoLocation
 import com.google.android.gms.location.*
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
 
 /**
- * Foreground service that monitors rider's trip in real-time
- * - Tracks location when rider is travelling
- * - Auto-completes trip at destination
- * - Detects early/late exits and recalculates fare
- * - Uses owner's registered fares
+ * FIXED: Improved trip monitoring with better destination detection
  */
 class TripMonitoringService : Service() {
 
@@ -36,11 +29,13 @@ class TripMonitoringService : Service() {
     private var currentRequestId: String? = null
     private var isMonitoring = false
     private var lastKnownLocation: Location? = null
+    private var consecutiveDestinationHits = 0 // Track how many times we're near destination
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let { location ->
                 lastKnownLocation = location
+                Log.d("TripMonitoring", "📍 New location: ${location.latitude}, ${location.longitude}, accuracy: ${location.accuracy}m")
                 onLocationUpdate(location)
             }
         }
@@ -49,8 +44,11 @@ class TripMonitoringService : Service() {
     companion object {
         private const val CHANNEL_ID = "trip_monitoring_channel"
         private const val NOTIFICATION_ID = 1001
-        private const val DESTINATION_RADIUS_METERS = 50.0 // 50m to destination = arrived
-        private const val STOP_PROXIMITY_METERS = 100.0 // 100m to stop = approaching
+
+        // FIXED: Increased radius to handle GPS inaccuracy
+        private const val DESTINATION_RADIUS_METERS = 100.0 // Changed from 50m to 100m
+        private const val STOP_PROXIMITY_METERS = 150.0 // Changed from 100m to 150m
+        private const val MIN_HITS_FOR_ARRIVAL = 2 // Must be near destination 2 times in a row
 
         fun startMonitoring(context: Context, requestId: String) {
             val intent = Intent(context, TripMonitoringService::class.java).apply {
@@ -63,6 +61,8 @@ class TripMonitoringService : Service() {
             } else {
                 context.startService(intent)
             }
+
+            Log.d("TripMonitoring", "🚀 Start monitoring requested for request: $requestId")
         }
 
         fun stopMonitoring(context: Context) {
@@ -70,6 +70,7 @@ class TripMonitoringService : Service() {
                 action = "STOP_MONITORING"
             }
             context.startService(intent)
+            Log.d("TripMonitoring", "🛑 Stop monitoring requested")
         }
     }
 
@@ -77,7 +78,7 @@ class TripMonitoringService : Service() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         createNotificationChannel()
-        Log.d("TripMonitoring", "Service created")
+        Log.d("TripMonitoring", "✅ Service created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -98,25 +99,26 @@ class TripMonitoringService : Service() {
 
     private fun startMonitoringTrip(requestId: String) {
         if (isMonitoring && currentRequestId == requestId) {
-            Log.d("TripMonitoring", "Already monitoring request $requestId")
+            Log.d("TripMonitoring", "⚠️ Already monitoring request $requestId")
             return
         }
 
         currentRequestId = requestId
         isMonitoring = true
+        consecutiveDestinationHits = 0
 
         startForeground(NOTIFICATION_ID, createNotification("যাত্রা পর্যবেক্ষণ সক্রিয়"))
         startLocationUpdates()
 
-        Log.d("TripMonitoring", "Started monitoring request $requestId")
+        Log.d("TripMonitoring", "🎯 Started monitoring request $requestId")
     }
 
     private fun stopMonitoringTrip() {
         isMonitoring = false
         currentRequestId = null
+        consecutiveDestinationHits = 0
         stopLocationUpdates()
-        scope.cancel()
-        Log.d("TripMonitoring", "Stopped monitoring")
+        Log.d("TripMonitoring", "❌ Stopped monitoring")
     }
 
     private fun startLocationUpdates() {
@@ -125,17 +127,19 @@ class TripMonitoringService : Service() {
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            Log.e("TripMonitoring", "Location permission not granted")
+            Log.e("TripMonitoring", "❌ Location permission not granted")
             stopSelf()
             return
         }
 
+        // FIXED: More frequent updates for better accuracy
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            10000 // Update every 10 seconds
+            5000 // Update every 5 seconds (was 10)
         ).apply {
-            setMinUpdateIntervalMillis(5000) // Fastest: 5 seconds
-            setWaitForAccurateLocation(true)
+            setMinUpdateIntervalMillis(3000) // Fastest: 3 seconds (was 5)
+            setWaitForAccurateLocation(false) // Don't wait for perfect accuracy
+            setMaxUpdateDelayMillis(8000) // Force update after 8 seconds
         }.build()
 
         fusedLocationClient.requestLocationUpdates(
@@ -144,28 +148,35 @@ class TripMonitoringService : Service() {
             Looper.getMainLooper()
         )
 
-        Log.d("TripMonitoring", "Location updates started")
+        Log.d("TripMonitoring", "📡 Location updates started (every 5s)")
     }
 
     private fun stopLocationUpdates() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
-        Log.d("TripMonitoring", "Location updates stopped")
+        Log.d("TripMonitoring", "📡 Location updates stopped")
     }
 
     private fun onLocationUpdate(location: Location) {
         val requestId = currentRequestId ?: return
 
-        Log.d("TripMonitoring", "Location update: ${location.latitude}, ${location.longitude}")
-
         scope.launch {
             try {
                 // Get current request data
-                val request = getRequest(requestId) ?: return@launch
+                val request = getRequest(requestId) ?: run {
+                    Log.e("TripMonitoring", "❌ Could not fetch request $requestId")
+                    return@launch
+                }
 
                 // Only monitor if rider is travelling and not completed
-                if (request.rideStatus?.inBusTravelling != true ||
-                    request.rideStatus.tripCompleted == true) {
-                    Log.d("TripMonitoring", "Trip not in travelling state, stopping")
+                if (request.rideStatus?.inBusTravelling != true) {
+                    Log.d("TripMonitoring", "⚠️ Rider not in bus, stopping monitoring")
+                    stopMonitoringTrip()
+                    stopSelf()
+                    return@launch
+                }
+
+                if (request.rideStatus.tripCompleted == true) {
+                    Log.d("TripMonitoring", "✅ Trip already completed, stopping monitoring")
                     stopMonitoringTrip()
                     stopSelf()
                     return@launch
@@ -174,21 +185,26 @@ class TripMonitoringService : Service() {
                 // Update notification
                 updateNotification("যাত্রা চলছে - ${request.destination} এর দিকে")
 
-                // Check for destination arrival
-                checkDestinationArrival(request, location)
+                // PRIORITY 1: Check destination arrival FIRST
+                val arrivedAtDestination = checkDestinationArrival(request, location)
 
-                // Check for early/late exit
+                if (arrivedAtDestination) {
+                    // Trip completed, stop here
+                    return@launch
+                }
+
+                // PRIORITY 2: Check for early/late exit
                 checkRouteChanges(request, location)
 
             } catch (e: Exception) {
-                Log.e("TripMonitoring", "Error processing location: ${e.message}", e)
+                Log.e("TripMonitoring", "❌ Error processing location: ${e.message}", e)
             }
         }
     }
 
-    private suspend fun checkDestinationArrival(request: Request, location: Location) {
-        val destLat = request.destinationLatLng?.lat ?: return
-        val destLng = request.destinationLatLng?.lng ?: return
+    private suspend fun checkDestinationArrival(request: Request, location: Location): Boolean {
+        val destLat = request.destinationLatLng?.lat ?: return false
+        val destLng = request.destinationLatLng?.lng ?: return false
 
         val distanceToDestination = calculateDistance(
             location.latitude,
@@ -197,13 +213,29 @@ class TripMonitoringService : Service() {
             destLng
         )
 
-        Log.d("TripMonitoring", "Distance to destination: ${distanceToDestination * 1000}m")
+        val distanceMeters = distanceToDestination * 1000
 
-        // If within 50m of destination, auto-complete trip
-        if (distanceToDestination * 1000 <= DESTINATION_RADIUS_METERS) {
-            Log.d("TripMonitoring", "Arrived at destination, auto-completing trip")
-            autoCompleteTripAtDestination(request)
+        Log.d("TripMonitoring", "📏 Distance to destination (${request.destination}): ${String.format("%.1f", distanceMeters)}m")
+
+        // FIXED: Use consecutive hits to avoid false positives
+        if (distanceMeters <= DESTINATION_RADIUS_METERS) {
+            consecutiveDestinationHits++
+            Log.d("TripMonitoring", "🎯 Near destination! Hit count: $consecutiveDestinationHits/$MIN_HITS_FOR_ARRIVAL")
+
+            if (consecutiveDestinationHits >= MIN_HITS_FOR_ARRIVAL) {
+                Log.d("TripMonitoring", "✅ Confirmed arrival at destination, auto-completing trip")
+                autoCompleteTripAtDestination(request)
+                return true
+            }
+        } else {
+            // Reset counter if moved away
+            if (consecutiveDestinationHits > 0) {
+                Log.d("TripMonitoring", "⚠️ Moved away from destination, resetting counter")
+            }
+            consecutiveDestinationHits = 0
         }
+
+        return false
     }
 
     private suspend fun checkRouteChanges(request: Request, location: Location) {
@@ -250,12 +282,7 @@ class TripMonitoringService : Service() {
         val hasPassedDestination = distanceToOriginalDest * 1000 > 200
 
         if (!hasPassedDestination) {
-            // EARLY EXIT: Check ALL stops between pickup and destination
-            // Rider can get down at ANY stop before destination (even 5km before)
-
-            // Find the closest stop that is:
-            // 1. Between pickup and destination
-            // 2. Within 100m of rider's current location
+            // EARLY EXIT: Check stops between pickup and destination
             var closestEarlyStop: PointLocation? = null
             var closestDistance = Double.MAX_VALUE
 
@@ -268,32 +295,20 @@ class TripMonitoringService : Service() {
                     stop.longitude
                 )
 
-                // Check if within 100m and closer than previous closest
                 if (distanceToStop * 1000 <= STOP_PROXIMITY_METERS && distanceToStop < closestDistance) {
                     closestDistance = distanceToStop
                     closestEarlyStop = stop
                 }
             }
 
-            // If we found a nearby early stop, handle it
             if (closestEarlyStop != null) {
-                val distanceFromDest = calculateDistance(
-                    closestEarlyStop.latitude,
-                    closestEarlyStop.longitude,
-                    request.destinationLatLng.lat,
-                    request.destinationLatLng.lng
-                )
-
-                Log.d("TripMonitoring", "Approaching early stop: ${closestEarlyStop.address}")
-                Log.d("TripMonitoring", "Early stop is ${String.format("%.2f", distanceFromDest)}km before destination")
-
+                Log.d("TripMonitoring", "🔔 Early exit detected: ${closestEarlyStop.address}")
                 handleEarlyExit(request, closestEarlyStop, bus)
                 return
             }
 
         } else {
-            // LATE EXIT: Rider passed destination, check stops after it
-
+            // LATE EXIT: Rider passed destination
             var closestLateStop: PointLocation? = null
             var closestDistance = Double.MAX_VALUE
 
@@ -313,16 +328,7 @@ class TripMonitoringService : Service() {
             }
 
             if (closestLateStop != null) {
-                val distanceFromDest = calculateDistance(
-                    request.destinationLatLng.lat,
-                    request.destinationLatLng.lng,
-                    closestLateStop.latitude,
-                    closestLateStop.longitude
-                )
-
-                Log.d("TripMonitoring", "Approaching late stop: ${closestLateStop.address}")
-                Log.d("TripMonitoring", "Late stop is ${String.format("%.2f", distanceFromDest)}km after destination")
-
+                Log.d("TripMonitoring", "🔔 Late exit detected: ${closestLateStop.address}")
                 handleLateExit(request, closestLateStop, bus)
                 return
             }
@@ -331,19 +337,11 @@ class TripMonitoringService : Service() {
 
     private suspend fun handleEarlyExit(request: Request, stop: PointLocation, bus: Bus) {
         try {
-            Log.d("TripMonitoring", "Processing early exit to: ${stop.address}")
+            Log.d("TripMonitoring", "⬅️ Processing early exit to: ${stop.address}")
 
-            // Calculate new fare using owner's registered fares
-            val newFare = calculateFareForRoute(
-                bus,
-                request.pickup,
-                stop.address,
-                request.seats
-            )
-
+            val newFare = calculateFareForRoute(bus, request.pickup, stop.address, request.seats)
             val stopLatLng = LatLngData(stop.latitude, stop.longitude)
 
-            // Update request with early exit
             val updates = mapOf(
                 "rideStatus/earlyExitRequested" to true,
                 "rideStatus/earlyExitRequestedAt" to System.currentTimeMillis(),
@@ -355,31 +353,25 @@ class TripMonitoringService : Service() {
             )
 
             updateRequest(request.id, updates)
-
             updateNotification("আগাম নামার স্থান: ${stop.address} - ভাড়া: ৳$newFare")
 
-            Log.d("TripMonitoring", "Early exit processed - New fare: $newFare")
+            // Reset counter since destination changed
+            consecutiveDestinationHits = 0
+
+            Log.d("TripMonitoring", "✅ Early exit processed - New fare: ৳$newFare")
 
         } catch (e: Exception) {
-            Log.e("TripMonitoring", "Early exit failed: ${e.message}", e)
+            Log.e("TripMonitoring", "❌ Early exit failed: ${e.message}", e)
         }
     }
 
     private suspend fun handleLateExit(request: Request, stop: PointLocation, bus: Bus) {
         try {
-            Log.d("TripMonitoring", "Processing late exit to: ${stop.address}")
+            Log.d("TripMonitoring", "➡️ Processing late exit to: ${stop.address}")
 
-            // Calculate new fare using owner's registered fares
-            val newFare = calculateFareForRoute(
-                bus,
-                request.pickup,
-                stop.address,
-                request.seats
-            )
-
+            val newFare = calculateFareForRoute(bus, request.pickup, stop.address, request.seats)
             val stopLatLng = LatLngData(stop.latitude, stop.longitude)
 
-            // Update request with late exit
             val updates = mapOf(
                 "rideStatus/lateExitRequested" to true,
                 "rideStatus/lateExitStop" to stop.address,
@@ -390,19 +382,21 @@ class TripMonitoringService : Service() {
             )
 
             updateRequest(request.id, updates)
-
             updateNotification("পরে নামার স্থান: ${stop.address} - ভাড়া: ৳$newFare")
 
-            Log.d("TripMonitoring", "Late exit processed - New fare: $newFare")
+            // Reset counter since destination changed
+            consecutiveDestinationHits = 0
+
+            Log.d("TripMonitoring", "✅ Late exit processed - New fare: ৳$newFare")
 
         } catch (e: Exception) {
-            Log.e("TripMonitoring", "Late exit failed: ${e.message}", e)
+            Log.e("TripMonitoring", "❌ Late exit failed: ${e.message}", e)
         }
     }
 
     private suspend fun autoCompleteTripAtDestination(request: Request) {
         try {
-            Log.d("TripMonitoring", "Auto-completing trip at destination")
+            Log.d("TripMonitoring", "🏁 Auto-completing trip at destination")
 
             val currentTime = System.currentTimeMillis()
             val updates = mapOf(
@@ -419,34 +413,29 @@ class TripMonitoringService : Service() {
 
             updateRequest(request.id, updates)
 
-            updateNotification("যাত্রা সম্পূর্ণ হয়েছে")
+            updateNotification("✅ যাত্রা সম্পূর্ণ হয়েছে")
+
+            Log.d("TripMonitoring", "✅ Trip auto-completed successfully")
 
             // Stop monitoring after 3 seconds
             delay(3000)
             stopMonitoringTrip()
             stopSelf()
 
-            Log.d("TripMonitoring", "Trip auto-completed successfully")
-
         } catch (e: Exception) {
-            Log.e("TripMonitoring", "Auto-completion failed: ${e.message}", e)
+            Log.e("TripMonitoring", "❌ Auto-completion failed: ${e.message}", e)
         }
     }
 
     private fun calculateFareForRoute(bus: Bus, from: String, to: String, seats: Int): Int {
-        // Clean stop names (remove special characters)
         val cleanFrom = from.replace(Regex("[^A-Za-z0-9 ]"), "")
         val cleanTo = to.replace(Regex("[^A-Za-z0-9 ]"), "")
 
-        // Try to get exact fare from owner's registered fares
         val registeredFare = bus.fares[cleanFrom]?.get(cleanTo)
 
         return if (registeredFare != null) {
-            // Use owner's registered fare
             registeredFare * seats
         } else {
-            // Fallback: calculate based on distance (10 taka/km, min 20)
-            // This should rarely happen if owner registered fares properly
             val pickup = bus.route?.stopPointsLoc?.find {
                 it.address.replace(Regex("[^A-Za-z0-9 ]"), "") == cleanFrom
             }
@@ -461,15 +450,13 @@ class TripMonitoringService : Service() {
                 )
                 ((distance * 10).toInt().coerceAtLeast(20)) * seats
             } else {
-                // Last resort: use original fare
-                Log.w("TripMonitoring", "Could not calculate fare, using original")
                 100 * seats
             }
         }
     }
 
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val r = 6371.0 // Earth radius in kilometers
+        val r = 6371.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -559,6 +546,6 @@ class TripMonitoringService : Service() {
         super.onDestroy()
         stopLocationUpdates()
         scope.cancel()
-        Log.d("TripMonitoring", "Service destroyed")
+        Log.d("TripMonitoring", "🔚 Service destroyed")
     }
 }
