@@ -1,5 +1,6 @@
 package com.example.muritin
 
+import android.R
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -324,6 +325,7 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                                                             "তারিখ: ${schedule.date}"
                                                         )
                                                     },
+                                                    containerColor = BackgroundLight,
                                                     confirmButton = {
                                                         TextButton(
                                                             onClick = {
@@ -353,7 +355,7 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                                                     dismissButton = {
                                                         TextButton(onClick = {
                                                             showDeleteDialog = false
-                                                        }) { Text("বাতিল") }
+                                                        }) { Text("বাতিল", color = Primary) }
                                                     }
                                                 )
                                             }
@@ -380,6 +382,22 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                             val startMs = parseTime(date, start)
                             val endMs = parseTime(date, end)
                             scope.launch(Dispatchers.IO) {
+                                val currentTime = System.currentTimeMillis()
+                                val oneDay = 86400000L
+                                val oneDayBefore = currentTime - oneDay
+                                val scheduleOverlap = AuthRepository().checkDuplicateSchedule(startMs, endMs, user.uid)
+                                if (scheduleOverlap) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "এই দিনে এই সময়ে অন্য একটি শিডিউল আছে। দয়া করে অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                    }
+                                    return@launch
+                                }
+                                if (startMs < oneDayBefore) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "১ দিনের বেশি আগের শিডিউল তৈরি করা যাবে না। দয়া করে অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                    }
+                                    return@launch
+                                }
                                 val result = AuthRepository().createSchedule(
                                     busId = assignedBus!!.busId,
                                     conductorId = user.uid,
@@ -418,6 +436,22 @@ fun ConductorSchedule(navController: NavHostController, user: FirebaseUser) {
                         try {
                             val startMs = parseTime(date, start)
                             val endMs = parseTime(date, end)
+                            val currentTime = System.currentTimeMillis()
+                            val oneDay = 86400000L
+                            val oneDayBefore = currentTime - oneDay
+                            val scheduleOverlap = AuthRepository().checkDuplicateSchedule(startMs, endMs, user.uid)
+                            if (scheduleOverlap) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "একই সময়ে অন্য একটি শিডিউল আছে। অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                }
+                                return@launch
+                            }
+                            if (startMs < oneDayBefore) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "১ দিনের বেশি আগের শিডিউল তৈরি করা যাবে না। অন্য সময় নির্বাচন করুন।", Toast.LENGTH_SHORT).show()
+                                }
+                                return@launch
+                            }
                             database.getReference("schedules")
                                 .child(editingSchedule!!.scheduleId)
                                 .updateChildren(
@@ -506,7 +540,7 @@ fun ScheduleItemCard(
                         Icon(
                             Icons.Outlined.Edit,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = Primary
                         )
                     }
                     IconButton(onClick = onDelete) {
@@ -568,11 +602,15 @@ fun ScheduleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            Button(onClick = { onConfirm(date, start, end, direction) }) {
+            Button(onClick = { onConfirm(date, start, end, direction) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Primary,
+                    contentColor = Color.White
+                )) {
                 Text("সংরক্ষণ")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল", color = Error) } },
         title = {
             Text(title, fontWeight = FontWeight.Bold)
         },
@@ -582,6 +620,11 @@ fun ScheduleDialog(
                     value = date,
                     onValueChange = { date = it },
                     label = { Text("তারিখ (YYYY-MM-DD)") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedLabelColor = Primary,
+                        unfocusedLabelColor = TextSecondary,
+                        focusedBorderColor = Primary
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -589,6 +632,11 @@ fun ScheduleDialog(
                     value = start,
                     onValueChange = { start = it },
                     label = { Text("শুরুর সময় (HH:MM)") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedLabelColor = Primary,
+                        unfocusedLabelColor = TextSecondary,
+                        focusedBorderColor = Primary
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -596,6 +644,11 @@ fun ScheduleDialog(
                     value = end,
                     onValueChange = { end = it },
                     label = { Text("শেষের সময় (HH:MM)") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedLabelColor = Primary,
+                        unfocusedLabelColor = TextSecondary,
+                        focusedBorderColor = Primary
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -608,16 +661,45 @@ fun ScheduleDialog(
                     FilterChip(
                         selected = direction == "going",
                         onClick = { direction = "going" },
-                        label = { Text("যাচ্ছি") }
+                        label = { Text("যাচ্ছি") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.White,
+                            labelColor = TextPrimary,
+                            selectedContainerColor = Primary,
+                            selectedLabelColor = Color.White,
+                            disabledContainerColor = BackgroundLight,
+                            disabledLabelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = Primary,
+                            selectedBorderColor = Primary,
+                            enabled = true,
+                            selected = true
+                        )
                     )
                     FilterChip(
                         selected = direction == "returning",
                         onClick = { direction = "returning" },
-                        label = { Text("ফিরছি") }
+                        label = { Text("ফিরছি") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.White,
+                            labelColor = TextPrimary,
+                            selectedContainerColor = Primary,
+                            selectedLabelColor = Color.White,
+                            disabledContainerColor = BackgroundLight,
+                            disabledLabelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = Primary,
+                            selectedBorderColor = Primary,
+                            enabled = true,
+                            selected = true
+                        )
                     )
                 }
             }
-        }
+        },
+        containerColor = BackgroundLight
     )
 }
 

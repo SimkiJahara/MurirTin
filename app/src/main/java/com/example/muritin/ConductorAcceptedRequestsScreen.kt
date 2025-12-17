@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -26,6 +27,8 @@ import com.example.muritin.ui.theme.*
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,33 +50,38 @@ fun ConductorAcceptedRequestsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Function to load accepted requests
+
+
     suspend fun loadAcceptedRequests() {
         try {
             Log.d("ConductorAcceptedRequests", "Loading accepted requests for conductor: ${user.uid}")
             val requests = AuthRepository().getAcceptedRequestsForConductor(user.uid)
             Log.d("ConductorAcceptedRequests", "Found ${requests.size} accepted requests")
 
-            // Load rider data for each request BEFORE setting acceptedRequests
+            // Filter out completed trips - they should not show here
+            val activeRequests = requests.filter { request ->
+                request.rideStatus?.tripCompleted != true && request.status != "Completed"
+            }
+
+            // Load rider data for each ACTIVE request
             val riderMap = mutableMapOf<String, User>()
-            requests.forEach { request ->
+            activeRequests.forEach { request ->
                 Log.d("ConductorAcceptedRequests", "Loading rider data for riderId: ${request.riderId}")
                 try {
                     val riderResult = AuthRepository().getUser(request.riderId)
                     riderResult.getOrNull()?.let { rider ->
                         Log.d("ConductorAcceptedRequests", "Loaded rider: ${rider.name}, phone: ${rider.phone}")
                         riderMap[request.riderId] = rider
-                    } ?: Log.e("ConductorAcceptedRequests", "Failed to load rider data for ${request.riderId}: result was null")
+                    } ?: Log.e("ConductorAcceptedRequests", "Failed to load rider data for ${request.riderId}")
                 } catch (e: Exception) {
                     Log.e("ConductorAcceptedRequests", "Exception loading rider ${request.riderId}: ${e.message}", e)
                 }
             }
 
-            // Update state together
             riderDataMap = riderMap
-            acceptedRequests = requests
+            acceptedRequests = activeRequests
 
-            Log.d("ConductorAcceptedRequests", "Total rider data loaded: ${riderMap.size} for ${requests.size} requests")
+            Log.d("ConductorAcceptedRequests", "Total active requests: ${activeRequests.size}, Total rider data loaded: ${riderMap.size}")
             error = null
         } catch (e: Exception) {
             error = "ডেটা লোড করতে ব্যর্থ: ${e.message}"
@@ -219,13 +227,19 @@ fun ConductorAcceptedRequestsScreen(
                             Icon(
                                 Icons.Filled.CheckCircle,
                                 contentDescription = null,
-                                modifier = Modifier.size(64.dp),
+                                modifier = Modifier.size(80.dp),
                                 tint = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 "কোনো গৃহীত রিকোয়েস্ট নেই",
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                "নতুন রিকোয়েস্ট গ্রহণ করুন",
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = TextSecondary
                             )
                         }
@@ -250,23 +264,26 @@ fun ConductorAcceptedRequestsScreen(
 
                         items(acceptedRequests) { request ->
                             val rider = riderDataMap[request.riderId]
-                            Log.d("ConductorAcceptedRequests", "Rendering card for request ${request.id}, riderId: ${request.riderId}, rider found: ${rider != null}, rider name: ${rider?.name}, rider phone: ${rider?.phone}")
-                            AcceptedRequestCard(
+                            ConductorRequestCard(
                                 request = request,
                                 rider = rider,
-                                onChatClick = {
-                                    navController.navigate("chat/${request.id}")
-                                },
                                 onVerifyOtpClick = {
                                     selectedRequest = request
                                     enteredOtp = ""
                                     showOtpDialog = true
-                                }
+                                },
+                                onOpenChat = { requestId ->
+                                    navController.navigate("chat/$requestId")
+                                },
+                                onRefresh = {
+                                    scope.launch {
+                                        isRefreshing = true
+                                        loadAcceptedRequests()
+                                        isRefreshing = false
+                                    }
+                                },
+                                conductorId = user.uid
                             )
-                        }
-
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
@@ -281,90 +298,83 @@ fun ConductorAcceptedRequestsScreen(
             onOtpChange = { enteredOtp = it },
             onDismiss = {
                 showOtpDialog = false
-                selectedRequest = null
                 enteredOtp = ""
             },
             onVerify = {
-                if (enteredOtp == selectedRequest!!.otp) {
-                    Toast.makeText(
-                        context,
-                        "OTP যাচাই সফল! যাত্রী বোর্ড করেছে",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    showOtpDialog = false
-                    selectedRequest = null
-                    enteredOtp = ""
-                } else {
-                    Toast.makeText(
-                        context,
-                        "ভুল OTP! আবার চেষ্টা করুন",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                scope.launch {
+                    val result = AuthRepository().verifyOtpAndBoardRider(
+                        selectedRequest!!.id,
+                        enteredOtp,
+                        user.uid
+                    )
+                    if (result.isSuccess) {
+                        Toast.makeText(
+                            context,
+                            "OTP যাচাই সফল! যাত্রী বাসে উঠেছেন",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        showOtpDialog = false
+                        enteredOtp = ""
+                        loadAcceptedRequests()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            result.exceptionOrNull()?.message ?: "যাচাই ব্যর্থ",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         )
     }
 }
 
+
 @Composable
-fun AcceptedRequestCard(
+fun ConductorRequestCard(
     request: Request,
     rider: User?,
-    onChatClick: () -> Unit,
-    onVerifyOtpClick: () -> Unit
+    onVerifyOtpClick: () -> Unit,
+    onOpenChat: (String) -> Unit,
+    onRefresh: () -> Unit,
+    conductorId: String
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     Card(
         modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // Header with gradient
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(RouteBlue, RoutePurple)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(12.dp)
+            // Rider Info
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.Person,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
                         Text(
                             text = rider?.name ?: "লোড হচ্ছে...",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            fontWeight = FontWeight.Bold
                         )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = RouteGreen
-                    ) {
                         Text(
-                            text = "গৃহীত",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            text = rider?.phone ?: "",
                             style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = TextSecondary
                         )
                     }
                 }
@@ -372,68 +382,294 @@ fun AcceptedRequestCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Rider Information
-            InfoRow(
-                icon = Icons.Filled.Phone,
-                label = "ফোন নম্বর",
-                value = rider?.phone ?: "লোড হচ্ছে...",
-                iconColor = RouteOrange
-            )
+            // Travelling Status (if boarded)
+            if (request.rideStatus?.inBusTravelling == true) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFE3F2FD)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.DirectionsBus,
+                            contentDescription = null,
+                            tint = RouteBlue,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "যাত্রী বাসে ভ্রমণরত",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteBlue
+                            )
+                            Text(
+                                "বোর্ড: ${SimpleDateFormat("h:mm a", Locale.US).format(Date(request.rideStatus.boardedAt))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
 
-            // Trip Details
+                FareDisplayCard(request = request)
+
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // AUTO-MONITORING INDICATOR
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = RouteGreen.copy(alpha = 0.1f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoMode,
+                            contentDescription = null,
+                            tint = RouteGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "স্বয়ংক্রিয় পর্যবেক্ষণ সক্রিয়",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteGreen
+                            )
+                            Text(
+                                "গন্তব্যে পৌঁছানো এবং ভাড়া সংগ্রহ স্বয়ংক্রিয়ভাবে হবে",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Route details
             InfoRow(
-                icon = Icons.Filled.LocationOn,
-                label = "পিকআপ",
+                icon = Icons.Filled.TripOrigin,
+                label = "পিকআপ স্থান",
                 value = request.pickup,
                 iconColor = RouteGreen
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
             InfoRow(
-                icon = Icons.Filled.Place,
-                label = "গন্তব্য",
+                icon = Icons.Filled.LocationOn,
+                label = "গন্তব্য স্থান",
                 value = request.destination,
                 iconColor = Error
             )
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Seat and Fare
+            // Trip details
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 InfoChip(
                     icon = Icons.Filled.EventSeat,
-                    label = "সিট",
+                    label = "আসন",
                     value = "${request.seats}",
                     backgroundColor = RouteBlue.copy(alpha = 0.1f),
                     contentColor = RouteBlue
                 )
 
                 InfoChip(
-                    icon = Icons.Filled.Money,
+                    icon = Icons.Filled.Payment,
                     label = "ভাড়া",
-                    value = "৳${request.fare}",
-                    backgroundColor = RouteGreen.copy(alpha = 0.1f),
-                    contentColor = RouteGreen
+                    value = if (request.rideStatus?.actualFare != null && request.rideStatus.actualFare > 0) {
+                        "৳${request.rideStatus.actualFare}"
+                    } else {
+                        "৳${request.fare}"
+                    },
+                    backgroundColor = RouteOrange.copy(alpha = 0.1f),
+                    contentColor = RouteOrange
                 )
+            }
+
+            // Early Exit Request Card (ONLY APPROVAL, NO MANUAL ENTRY)
+            if (request.rideStatus?.earlyExitRequested == true) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = RouteOrange.copy(alpha = 0.1f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = RouteOrange,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "যাত্রী আগাম নামতে চায় (স্বয়ংক্রিয়)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteOrange
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "স্থান: ${request.rideStatus.earlyExitStop}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                        Text(
+                            "ভাড়া স্বয়ংক্রিয়ভাবে পুনর্গণনা করা হয়েছে",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = RouteGreen,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // Late Exit Request Card (ONLY APPROVAL, NO MANUAL ENTRY)
+            if (request.rideStatus?.lateExitRequested == true) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = RouteBlue.copy(alpha = 0.1f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = RouteBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "যাত্রী পরে নামতে চায় (স্বয়ংক্রিয়)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteBlue
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "স্থান: ${request.rideStatus.lateExitStop}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                        Text(
+                            "ভাড়া স্বয়ংক্রিয়ভাবে পুনর্গণনা করা হয়েছে",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = RouteGreen,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Chat Button
-                OutlinedButton(
-                    onClick = onChatClick,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = RoutePurple
+            if (request.rideStatus?.inBusTravelling == true) {
+                // REMOVED MANUAL FARE COLLECTION BUTTON
+                // Everything is automatic now!
+
+                if (!request.rideStatus.tripCompleted) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFE8F5E9)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Filled.AutoMode,
+                                contentDescription = null,
+                                tint = RouteGreen,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "স্বয়ংক্রিয় পর্যবেক্ষণ চলছে",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteGreen,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                "যাত্রী গন্তব্যে পৌঁছালে ভাড়া স্বয়ংক্রিয়ভাবে সংগ্রহ হবে",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    // Trip completed
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = RouteGreen.copy(alpha = 0.1f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = RouteGreen,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "যাত্রা সম্পূর্ণ",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RouteGreen
+                                )
+                                Text(
+                                    "স্বয়ংক্রিয়ভাবে সম্পন্ন হয়েছে",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Chat button
+                Button(
+                    onClick = { onOpenChat(request.id) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = RouteGreen
                     )
                 ) {
                     Icon(
@@ -444,22 +680,43 @@ fun AcceptedRequestCard(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("চ্যাট")
                 }
-
-                // OTP Verify Button
-                Button(
-                    onClick = onVerifyOtpClick,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = RouteGreen
-                    )
+            } else {
+                // If not boarded yet, show OTP and chat buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("OTP যাচাই")
+                    Button(
+                        onClick = { onOpenChat(request.id) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = RouteGreen
+                        )
+                    ) {
+                        Icon(
+                            Icons.Filled.Chat,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("চ্যাট")
+                    }
+
+                    Button(
+                        onClick = onVerifyOtpClick,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Primary
+                        )
+                    ) {
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("OTP যাচাই")
+                    }
                 }
             }
         }
@@ -468,7 +725,7 @@ fun AcceptedRequestCard(
 
 @Composable
 fun InfoRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     iconColor: Color
@@ -504,7 +761,7 @@ fun InfoRow(
 
 @Composable
 fun InfoChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     backgroundColor: Color,

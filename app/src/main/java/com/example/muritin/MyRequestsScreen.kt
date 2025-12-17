@@ -1,13 +1,21 @@
 package com.example.muritin
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
+import android.net.Uri
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -21,9 +29,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.core.app.ActivityCompat
 import androidx.navigation.NavHostController
 import com.example.muritin.ui.theme.*
+import com.firebase.geofire.GeoFireUtils
+import com.firebase.geofire.GeoLocation
+import com.google.android.gms.location.*
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -41,14 +55,14 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
     var error by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Function to fetch requests
     suspend fun fetchRequests() {
         try {
             Log.d("MyRequestsScreen", "Fetching requests for user ${user.uid}")
+            // getRequestsForUser now already filters out completed trips
             requests = AuthRepository().getRequestsForUser(user.uid)
             error = null
         } catch (e: Exception) {
-            error = "রিকোয়েস্ট পুনর্ধারে ত্রুটি: ${e.message}"
+            error = "রিকোয়েস্ট পুনরধারে ত্রুটি: ${e.message}"
             Log.e("MyRequestsScreen", "Fetch failed: ${e.message}", e)
         }
     }
@@ -224,47 +238,26 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
-
-                            // Info Banner
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Info.copy(alpha = 0.1f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Info,
-                                        contentDescription = null,
-                                        tint = Info,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "পেন্ডিং রিকোয়েস্ট ৩ মিনিটে স্বয়ংক্রিয়ভাবে মুছে যাবে",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Info
-                                    )
-                                }
-                            }
                         }
 
                         items(requests) { request ->
                             RequestCard(
                                 request = request,
-                                user = user,
-                                navController = navController,
                                 onRefresh = {
                                     scope.launch {
+                                        isRefreshing = true
                                         fetchRequests()
+                                        isRefreshing = false
                                     }
-                                }
+                                },
+                                onOpenChat = { requestId ->
+                                    navController.navigate("chat/$requestId")
+                                },
+                                onNavigateToTracking = { requestId ->
+                                    navController.navigate("live_tracking/$requestId")
+                                },
+                                user = user
                             )
-                        }
-
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
@@ -273,40 +266,126 @@ fun MyRequestsScreen(navController: NavHostController, user: FirebaseUser) {
     }
 }
 
+
 @Composable
 fun RequestCard(
     request: Request,
-    user: FirebaseUser,
-    navController: NavHostController,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onOpenChat: (String) -> Unit,
+    onNavigateToTracking: (String) -> Unit,
+    user: FirebaseUser
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    var bus by remember { mutableStateOf<Bus?>(null) }
-    var conductor by remember { mutableStateOf<User?>(null) }
-    var isChatEnabled by remember { mutableStateOf(false) }
     var isCancelling by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(false) }
+    var conductorData by remember { mutableStateOf<User?>(null) }
+    var isLoadingConductor by remember { mutableStateOf(false) }
 
-    LaunchedEffect(request.busId, request.conductorId) {
-        request.busId?.let { busId ->
-            bus = AuthRepository().getBus(busId)
+    // Load conductor data when request is accepted
+    LaunchedEffect(request.conductorId, request.status) {
+        if (request.status == "Accepted" && request.conductorId.isNotEmpty() && conductorData == null) {
+            isLoadingConductor = true
+            try {
+                val result = AuthRepository().getUser(request.conductorId)
+                conductorData = result.getOrNull()
+            } catch (e: Exception) {
+                Log.e("RequestCard", "Failed to load conductor: ${e.message}")
+            }
+            isLoadingConductor = false
         }
-        if (request.conductorId.isNotEmpty()) {
-            conductor = AuthRepository().getUser(request.conductorId).getOrNull()
+    }
+
+    // AUTO-START MONITORING when rider boards the bus
+    // AUTO-START MONITORING when rider boards the bus
+    LaunchedEffect(request.rideStatus?.inBusTravelling) {
+        if (request.rideStatus?.inBusTravelling == true &&
+            request.rideStatus.tripCompleted != true) {
+
+            // ✅ CHECK PERMISSIONS BEFORE STARTING SERVICE
+            if (!context.hasLocationPermissions()) {
+                Log.w("RequestCard", "Location permissions not granted, cannot start monitoring")
+                Toast.makeText(
+                    context,
+                    "যাত্রা নিরীক্ষণের জন্য লোকেশন অনুমতি প্রয়োজন",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@LaunchedEffect
+            }
+
+            Log.d("RequestCard", "Starting automatic trip monitoring for ${request.id}")
+            try {
+                TripMonitoringService.startMonitoring(context, request.id)
+
+                Toast.makeText(
+                    context,
+                    "স্বয়ংক্রিয় যাত্রা পর্যবেক্ষণ শুরু হয়েছে",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (e: SecurityException) {
+                Log.e("RequestCard", "SecurityException starting monitoring: ${e.message}", e)
+                Toast.makeText(
+                    context,
+                    "যাত্রা নিরীক্ষণ শুরু করতে ব্যর্থ: অনুমতি প্রয়োজন",
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (e: Exception) {
+                Log.e("RequestCard", "Error starting monitoring: ${e.message}", e)
+                Toast.makeText(
+                    context,
+                    "যাত্রা নিরীক্ষণ শুরু করতে ত্রুটি",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
-        isChatEnabled = AuthRepository().isChatEnabled(request.id)
+    }
+
+    // AUTO-STOP MONITORING when trip is completed
+    LaunchedEffect(request.rideStatus?.tripCompleted) {
+        if (request.rideStatus?.tripCompleted == true) {
+            Log.d("RequestCard", "Stopping trip monitoring for ${request.id}")
+            TripMonitoringService.stopMonitoring(context)
+        }
+    }
+
+    // Cleanup monitoring if card is removed
+    DisposableEffect(Unit) {
+        onDispose {
+            if (request.rideStatus?.inBusTravelling == true &&
+                request.rideStatus.tripCompleted != true) {
+                // Don't stop here - let the service complete naturally
+            }
+        }
+    }
+
+    // Determine status color and text
+    val statusColor = when {
+        request.status == "Completed" -> Color(0xFF4CAF50)
+        request.rideStatus?.inBusTravelling == true -> Color(0xFF2196F3)
+        request.status == "Accepted" -> RouteGreen
+        request.status == "Pending" -> RouteOrange
+        else -> Error
+    }
+
+    val statusText = when {
+        request.status == "Completed" -> "সম্পন্ন"
+        request.rideStatus?.inBusTravelling == true -> "বাসে ভ্রমণরত (স্বয়ংক্রিয় নিরীক্ষণ)"
+        request.rideStatus?.otpVerified == true -> "OTP যাচাইকৃত"
+        request.status == "Accepted" -> "গৃহীত"
+        request.status == "Pending" -> "অপেক্ষমান (৩ মিনিটের মধ্যে রিকোয়েস্ট অ্যাক্সেপ্ট করা না হলে রিকোয়েস্ট টি মুছে যাবে)"
+        request.status == "Cancelled" -> "বাতিল"
+        else -> request.status
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Status Header
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            // Header with status
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -315,28 +394,30 @@ fun RequestCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(getStatusColor(request.status).copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            getStatusIcon(request.status),
-                            contentDescription = null,
-                            tint = getStatusColor(request.status),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = getStatusText(request.status),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = getStatusColor(request.status)
+                            .size(12.dp)
+                            .background(statusColor, CircleShape)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = statusColor
+                        )
+                        // Show auto-monitoring indicator
+                        if (request.rideStatus?.inBusTravelling == true &&
+                            request.rideStatus.tripCompleted != true) {
+                            Text(
+                                "স্বয়ংক্রিয় নিয়ন্ত্রণ সক্রিয়",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = RouteBlue,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
 
-                // Timestamp
                 Text(
                     text = formatTimestamp(request.createdAt),
                     style = MaterialTheme.typography.bodySmall,
@@ -346,141 +427,253 @@ fun RequestCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Trip Route
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        BackgroundLight,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(12.dp)
-            ) {
-                TripRouteRow(
-                    icon = Icons.Filled.TripOrigin,
-                    label = "পিকআপ",
-                    value = request.pickup,
-                    iconColor = RouteGreen
-                )
+            // Fare Display
+            CompactFareDisplay(request = request)
 
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                TripRouteRow(
-                    icon = Icons.Filled.Place,
-                    label = "গন্তব্য",
-                    value = request.destination,
-                    iconColor = Error
-                )
+            // Ride Status Indicator (if travelling)
+            if (request.rideStatus?.inBusTravelling == true) {
+                RideStatusCard(request.rideStatus)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ✅ NEW: Live Distance Display
+                LiveDistanceDisplay(request = request)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Auto-monitoring info card
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = RouteBlue.copy(alpha = 0.1f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.GpsFixed,
+                            contentDescription = null,
+                            tint = RouteBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "স্বয়ংক্রিয় পর্যবেক্ষণ চলছে",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteBlue
+                            )
+                            Text(
+                                "আপনি গন্তব্যে পৌঁছালে বা রুট পরিবর্তন করলে স্বয়ংক্রিয়ভাবে আপডেট হবে",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
+
+            // Route details
+            TripRouteRow(
+                icon = Icons.Filled.TripOrigin,
+                label = "পিকআপ স্থান",
+                value = request.pickup,
+                iconColor = RouteGreen
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TripRouteRow(
+                icon = Icons.Filled.LocationOn,
+                label = "গন্তব্য স্থান",
+                value = request.destination,
+                iconColor = Error
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Trip Details
+            // Conductor Info Card (if accepted)
+            if (request.status == "Accepted" && request.conductorId.isNotEmpty()) {
+                ConductorInfoCard(
+                    conductorData = conductorData,
+                    isLoading = isLoadingConductor
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Trip details
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TripDetailChip(
                     icon = Icons.Filled.EventSeat,
-                    label = "সিট",
+                    label = "আসন",
                     value = "${request.seats}",
                     modifier = Modifier.weight(1f),
                     color = RouteBlue
                 )
 
                 TripDetailChip(
-                    icon = Icons.Filled.Money,
+                    icon = Icons.Filled.Payment,
                     label = "ভাড়া",
-                    value = "৳${request.fare}",
+                    value = if (request.rideStatus?.actualFare != null && request.rideStatus.actualFare > 0) {
+                        "৳${request.rideStatus.actualFare}"
+                    } else {
+                        "৳${request.fare}"
+                    },
                     modifier = Modifier.weight(1f),
-                    color = RouteGreen
+                    color = RouteOrange
                 )
             }
 
-            // Accepted Request Details
-            if (request.status == "Accepted") {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Divider()
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Bus Info
-                bus?.let {
-                    AcceptedInfoRow(
-                        icon = Icons.Filled.DirectionsBus,
-                        label = "বাস",
-                        value = "${it.name} • ${it.number}",
-                        iconColor = RoutePurple
-                    )
-                }
-
-                // Conductor Info
-                conductor?.let {
-                    AcceptedInfoRow(
-                        icon = Icons.Filled.Person,
-                        label = "কন্ডাক্টর",
-                        value = it.name,
-                        iconColor = RouteOrange
-                    )
-
-                    AcceptedInfoRow(
-                        icon = Icons.Filled.Phone,
-                        label = "ফোন নম্বর",
-                        value = it.phone,
-                        iconColor = RouteBlue
-                    )
-                }
-
-                // OTP Display
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = RouteGreen.copy(alpha = 0.1f)
+            // Show actual fare update message if changed
+            if (request.rideStatus?.actualFare != null &&
+                request.rideStatus.actualFare != request.fare &&
+                request.rideStatus.actualFare > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = RouteOrange.copy(alpha = 0.1f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.Lock,
-                                contentDescription = null,
-                                tint = RouteGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = RouteOrange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
                             Text(
-                                "আপনার OTP",
-                                style = MaterialTheme.typography.bodyMedium,
+                                "ভাড়া স্বয়ংক্রিয়ভাবে আপডেট হয়েছে",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteOrange
+                            )
+                            Text(
+                                "মূল: ৳${request.fare} → নতুন: ৳${request.rideStatus.actualFare}",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
+                    }
+                }
+            }
 
-                        Text(
-                            text = request.otp ?: "N/A",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = RouteGreen
+            // OTP Display (if accepted but not boarded)
+            if (request.status == "Accepted" &&
+                request.rideStatus?.inBusTravelling != true &&
+                request.otp != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = RouteGreen.copy(alpha = 0.1f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                "আপনার OTP",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                            Text(
+                                request.otp,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = RouteGreen
+                            )
+                            Text(
+                                "কন্ডাক্টরকে দেখান",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = null,
+                            tint = RouteGreen,
+                            modifier = Modifier.size(40.dp)
                         )
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(12.dp))
+            // Action Buttons
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Action Buttons for Accepted
+            // Monitoring status (if travelling)
+            if (request.rideStatus?.inBusTravelling == true &&
+                request.rideStatus.tripCompleted != true) {
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFE8F5E9)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoMode,
+                            contentDescription = null,
+                            tint = RouteGreen,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "স্বয়ংক্রিয় পর্যবেক্ষণ সক্রিয়",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = RouteGreen,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            "আপনি গন্তব্যে পৌঁছালে স্বয়ংক্রিয়ভাবে যাত্রা সম্পূর্ণ হবে। কোন ক্লিক করার প্রয়োজন নেই।",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            // Chat and Location buttons (if accepted and not completed)
+            val isChatEnabled = request.status == "Accepted" &&
+                    request.scheduleId != null &&
+                    request.rideStatus?.tripCompleted != true
+
+            if (request.status == "Accepted" && request.rideStatus?.tripCompleted != true) {
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = { navController.navigate("live_tracking/${request.id}") },
+                    Button(
+                        onClick = {
+                            onNavigateToTracking(request.id)
+                        },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = RoutePurple
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = RouteBlue
                         )
                     ) {
                         Icon(
@@ -489,17 +682,17 @@ fun RequestCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("ট্র্যাক করুন")
+                        Text("অবস্থান")
                     }
 
                     Button(
                         onClick = {
                             if (isChatEnabled) {
-                                navController.navigate("chat/${request.id}")
+                                onOpenChat(request.id)
                             } else {
                                 Toast.makeText(
                                     context,
-                                    "চ্যাট সময় শেষ হয়ে গেছে",
+                                    "চ্যাট শুধুমাত্র সক্রিয় ট্রিপের জন্য উপলব্ধ",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -540,17 +733,18 @@ fun RequestCard(
                                     ).show()
                                     onRefresh()
                                 } else {
-                                    val errorMsg = result.exceptionOrNull()?.message ?: "বাতিল ব্যর্থ"
-                                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        result.exceptionOrNull()?.message ?: "বাতিল ব্যর্থ",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isCancelling,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Error
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = Error)
                 ) {
                     if (isCancelling) {
                         CircularProgressIndicator(
@@ -573,9 +767,464 @@ fun RequestCard(
     }
 }
 
+
+@Composable
+fun LiveDistanceDisplay(
+    request: Request,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var currentLocation by remember { mutableStateOf<Location?>(null) }
+    var distanceToDestination by remember { mutableStateOf<Double?>(null) }
+    val fusedLocationClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    // Location callback for real-time updates
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                result.lastLocation?.let { location ->
+                    currentLocation = location
+
+                    // Calculate distance to destination
+                    request.destinationLatLng?.let { dest ->
+                        val distance = calculateDistanceInKm(
+                            location.latitude,
+                            location.longitude,
+                            dest.lat,
+                            dest.lng
+                        )
+                        distanceToDestination = distance
+
+                        Log.d("LiveDistance", "Distance to ${request.destination}: ${String.format("%.2f", distance)}km")
+                    }
+                }
+            }
+        }
+    }
+
+    // Start/stop location updates
+    DisposableEffect(Unit) {
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val locationRequest = LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                5000 // Update every 5 seconds
+            ).apply {
+                setMinUpdateIntervalMillis(3000)
+            }.build()
+
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+        }
+
+        onDispose {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
+    }
+
+    // Display card
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                distanceToDestination == null -> Color(0xFFFFF3E0)
+                distanceToDestination!! < 0.1 -> Color(0xFFE8F5E9) // Green - Very close (<100m)
+                distanceToDestination!! < 0.5 -> Color(0xFFFFF9C4) // Yellow - Close (<500m)
+                else -> Color(0xFFE3F2FD) // Blue - Far
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left side - Icon and destination
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    Icons.Filled.NearMe,
+                    contentDescription = null,
+                    tint = when {
+                        distanceToDestination == null -> RouteOrange
+                        distanceToDestination!! < 0.1 -> RouteGreen
+                        distanceToDestination!! < 0.5 -> RouteOrange
+                        else -> RouteBlue
+                    },
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "গন্তব্য পর্যন্ত দূরত্ব",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Text(
+                        request.destination,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // Right side - Distance number
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                if (distanceToDestination != null) {
+                    Row(
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Text(
+                            text = when {
+                                distanceToDestination!! < 0.1 -> {
+                                    // Show in meters when less than 100m
+                                    "${(distanceToDestination!! * 1000).toInt()}"
+                                }
+                                distanceToDestination!! < 1.0 -> {
+                                    // Show 1 decimal for 100m-1km
+                                    String.format("%.1f", distanceToDestination!!)
+                                }
+                                else -> {
+                                    // Show 2 decimals for 1km+
+                                    String.format("%.2f", distanceToDestination!!)
+                                }
+                            },
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = when {
+                                distanceToDestination!! < 0.1 -> RouteGreen
+                                distanceToDestination!! < 0.5 -> RouteOrange
+                                else -> RouteBlue
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (distanceToDestination!! < 0.1) "মি" else "কিমি",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextSecondary
+                        )
+                    }
+
+                    // Status text
+                    Text(
+                        text = when {
+                            distanceToDestination!! < 0.1 -> "খুব কাছে! 🎯"
+                            distanceToDestination!! < 0.5 -> "প্রায় পৌঁছেছেন"
+                            distanceToDestination!! < 2.0 -> "আসছেন"
+                            else -> "চলছেন"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when {
+                            distanceToDestination!! < 0.1 -> RouteGreen
+                            distanceToDestination!! < 0.5 -> RouteOrange
+                            else -> TextSecondary
+                        },
+                        fontWeight = if (distanceToDestination!! < 0.1) FontWeight.Bold else FontWeight.Normal
+                    )
+                } else {
+                    // Loading state
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            strokeWidth = 3.dp,
+                            color = RouteBlue
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "হিসাব করা হচ্ছে...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Arrival alert when very close
+    if (distanceToDestination != null && distanceToDestination!! < 0.15) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = RouteGreen.copy(alpha = 0.1f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = RouteGreen,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "আপনি গন্তব্যে পৌঁছে গেছেন!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = RouteGreen
+                    )
+                    Text(
+                        "যাত্রা স্বয়ংক্রিয়ভাবে সম্পূর্ণ হবে",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+// ============================================
+// PART 4: Supporting Components
+// ============================================
+
+@Composable
+fun ConductorInfoCard(
+    conductorData: User?,
+    isLoading: Boolean
+) {
+    val context = LocalContext.current
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Primary.copy(alpha = 0.1f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (isLoading) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = Primary,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "কন্ডাক্টর তথ্য লোড হচ্ছে...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            }
+        } else if (conductorData != null) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Person,
+                            contentDescription = null,
+                            tint = Primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "কন্ডাক্টর",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                            conductorData.name?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Primary
+                                )
+                            }
+                        }
+                    }
+
+                    // Call button
+                    IconButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_DIAL).apply {
+                                data = Uri.parse("tel:${conductorData.phone}")
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    "কল করতে ব্যর্থ",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(Primary, CircleShape)
+                    ) {
+                        Icon(
+                            Icons.Filled.Phone,
+                            contentDescription = "কল করুন",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Divider(color = Color.LightGray.copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Phone,
+                        contentDescription = null,
+                        tint = Primary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    conductorData.phone?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Info,
+                    contentDescription = null,
+                    tint = Error,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "কন্ডাক্টর তথ্য পাওয়া যায়নি",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RideStatusCard(rideStatus: RideStatus) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFE3F2FD)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.DirectionsBus,
+                    contentDescription = null,
+                    tint = RouteBlue,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "বাসে ভ্রমণরত",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = RouteBlue
+                    )
+                    Text(
+                        "আপনি ${SimpleDateFormat("h:mm a", Locale.US).format(Date(rideStatus.boardedAt))} বাসে উঠেছেন",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+
+            // Early/Late exit status
+            if (rideStatus.earlyExitRequested) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Divider(color = Color.LightGray)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = RouteOrange,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "আগাম নামার অনুরোধ করা হয়েছে: ${rideStatus.earlyExitStop}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary
+                    )
+                }
+            }
+
+            if (rideStatus.lateExitRequested) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Divider(color = Color.LightGray)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = RouteOrange,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "পরে নামার অনুরোধ করা হয়েছে: ${rideStatus.lateExitStop}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun TripRouteRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     iconColor: Color
@@ -609,7 +1258,7 @@ fun TripRouteRow(
 
 @Composable
 fun TripDetailChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     modifier: Modifier = Modifier,
@@ -648,71 +1297,7 @@ fun TripDetailChip(
     }
 }
 
-@Composable
-fun AcceptedInfoRow(
-    icon: ImageVector,
-    label: String,
-    value: String?,
-    iconColor: Color
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = iconColor,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
-            )
-            if (value != null) {
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = TextPrimary
-                )
-            }
-        }
-    }
-}
-
-fun getStatusIcon(status: String): androidx.compose.ui.graphics.vector.ImageVector {
-    return when (status) {
-        "Pending" -> Icons.Filled.Schedule
-        "Accepted" -> Icons.Filled.CheckCircle
-        "Cancelled" -> Icons.Filled.Cancel
-        else -> Icons.Filled.Info
-    }
-}
-
-fun getStatusColor(status: String): Color {
-    return when (status) {
-        "Pending" -> RouteOrange
-        "Accepted" -> RouteGreen
-        "Cancelled" -> Error
-        else -> TextSecondary
-    }
-}
-
-fun getStatusText(status: String): String {
-    return when (status) {
-        "Pending" -> "অপেক্ষমাণ"
-        "Accepted" -> "গৃহীত"
-        "Cancelled" -> "বাতিল"
-        else -> status
-    }
-}
-
+// Helper function
 private fun formatTimestamp(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
@@ -723,4 +1308,16 @@ private fun formatTimestamp(timestamp: Long): String {
         diff < 86400000 -> SimpleDateFormat("h:mm a", Locale.US).format(Date(timestamp))
         else -> SimpleDateFormat("MMM d, h:mm a", Locale.US).format(Date(timestamp))
     }
+}
+
+// Helper function for distance calculation
+private fun calculateDistanceInKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6371.0 // Earth radius in km
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return r * c
 }

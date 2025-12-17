@@ -25,6 +25,7 @@ import com.firebase.geofire.GeoLocation
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.text.replace
 
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -91,7 +92,7 @@ class AuthRepository {
                 throw Exception("আপনার ইমেইল যাচাই করা হয়নি। দয়া করে আপনার ইমেইল চেক করুন এবং যাচাই লিঙ্কে ক্লিক করুন।")
             }
             try {
-                //CLean expired schedule and request whenever someone logs in
+
                 cleanExpiredSchedules()
                 cleanExpiredRequests()
             } catch (e: Exception) {
@@ -197,7 +198,6 @@ class AuthRepository {
             val currentTime = System.currentTimeMillis()
             val snapshotSchedule = database.getReference("schedules").orderByChild("conductorId").equalTo(uid).get().await()
 
-            //Cannot remove schedule if any schedule is running now, if not remove future schedules
             for (childSnapshot in snapshotSchedule.children) {
                 val schedule = childSnapshot.getValue(Schedule::class.java)
                 if (schedule != null && schedule.startTime < currentTime && schedule.endTime >currentTime) {
@@ -805,6 +805,8 @@ class AuthRepository {
             }
             database.getReference("requests").child(requestId).updateChildren(updates).await()
             Log.d("AuthRepository", "Request accepted with OTP: $otp for bus: $busId")
+            val res = AuthRepository().updateFareForAcceptedRequest(req.id, busId)
+            Log.d("AuthRepository", "Fare updated!")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("AuthRepository", "Accept request failed: ${e.message}", e)
@@ -812,31 +814,47 @@ class AuthRepository {
         }
     }
 
-    suspend fun getRequestsForUser(userId: String): List<Request> {
+    suspend fun updateFareForAcceptedRequest(reqId: String, busId: String): Result<Unit> {
         return try {
-            val currentTime = System.currentTimeMillis()
-            val snapshot = database.getReference("requests")
-                .orderByChild("riderId")
-                .equalTo(userId)
-                .get().await()
-            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
-                child.getValue(Request::class.java)
+            val reqSnapshot = database.getReference("requests")
+                .child(reqId)
+                .get()
+                .await()
+
+            val request = reqSnapshot.getValue(Request::class.java)
+                ?: return Result.failure(Exception("Request not found"))
+
+            val origin = request.pickup.replace(Regex("[^A-Za-z0-9 ]"), "")
+            val destination = request.destination.replace(Regex("[^A-Za-z0-9 ]"), "")
+
+            val busSnapshot = database.getReference("buses")
+                .child(busId)
+                .get()
+                .await()
+
+            val bus = busSnapshot.getValue(Bus::class.java)
+
+            val fare = bus?.fares[origin]?.get(destination)
+                ?: (-15)
+            Log.d("AuthRepository", "The fetched fare is: $fare")
+            if (fare != (-15)){
+                val updatedRequest = request.copy(fare = fare)
+                database.getReference("requests")
+                    .child(reqId)
+                    .setValue(updatedRequest)
+                    .await()
+
+                Result.success(Unit)
+            } else {
+                Result.success(Unit)
             }
-            requests.filter { request ->
-                if (request.status == "Cancelled") return@filter false
-                if (request.status == "Accepted" && request.scheduleId != null) {
-                    val schedule = getSchedule(request.scheduleId) ?: return@filter false
-                    schedule.endTime >= currentTime
-                } else {
-                    true
-                }
-            }
+
+
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
-            emptyList()
+            Log.e("AuthRepository", "Update fare failed: ${e.message}", e)
+            Result.failure(e)
         }
     }
-
     suspend fun updateConductorLocation(conductorId: String, location: LatLng): Result<Unit> {
         return try {
             val locData = ConductorLocation(
@@ -952,6 +970,31 @@ class AuthRepository {
         }
     }
 
+    suspend fun checkDuplicateSchedule(startTime: Long, endTime: Long, conductId: String): Boolean {
+        try {
+            val snapshot = database.getReference("schedules").orderByChild("conductorId")
+                .equalTo(conductId).get().await()
+            val schedules = snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Schedule::class.java)
+            }
+            for (sch in schedules) {
+                val existingStartTime = sch.startTime
+                val existingEndTime = sch.endTime
+
+                val endsBefore = endTime <= existingStartTime
+                val startsAfter = startTime >= existingEndTime
+
+                if (!(endsBefore || startsAfter)) {
+                    return true
+                }
+            }
+            return false
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Checking schedule failed: ${e.message}", e)
+            return false
+        }
+    }
+
     suspend fun sendMessage(requestId: String, text: String): Result<Unit> {
         return try {
             val currentUid = auth.currentUser?.uid ?: throw Exception("No user logged in")
@@ -985,18 +1028,57 @@ class AuthRepository {
             })
     }
 
-    suspend fun isChatEnabled(requestId: String): Boolean {
+
+
+    suspend fun confirmConductorArrivalAndFare(
+        requestId: String,
+        conductorId: String,
+        fareCollected: Boolean = true
+    ): Result<Unit> {
         return try {
-            val snapshot = database.getReference("requests").child(requestId).get().await()
-            val request = snapshot.getValue(Request::class.java) ?: return false
-            if (request.status != "Accepted" || request.scheduleId == null) return false
-            val scheduleSnapshot = database.getReference("schedules").child(request.scheduleId).get().await()
-            val schedule = scheduleSnapshot.getValue(Schedule::class.java) ?: return false
+            Log.d("AuthRepository", "Conductor confirming arrival for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("যাত্রী এখনো বাসে উঠেননি")
+            }
+
             val currentTime = System.currentTimeMillis()
-            currentTime <= schedule.endTime + 432000000L
+            val updates = mutableMapOf<String, Any>(
+                "rideStatus/conductorArrivedConfirmed" to true,
+                "rideStatus/conductorArrivedAt" to currentTime,
+                "rideStatus/fareCollected" to fareCollected,
+                "rideStatus/fareCollectedAt" to currentTime
+            )
+
+            // If rider also confirmed, mark trip as completed
+            if (request.rideStatus?.riderArrivedConfirmed == true && fareCollected) {
+                updates["rideStatus/tripCompleted"] = true
+                updates["rideStatus/tripCompletedAt"] = currentTime
+                updates["status"] = "Completed" // THIS IS KEY - Update main status
+            }
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Conductor confirmed arrival and fare")
+            Result.success(Unit)
+
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Check chat enabled failed: ${e.message}", e)
-            false
+            Log.e("AuthRepository", "Conductor confirmation failed: ${e.message}", e)
+            Result.failure(e)
         }
     }
 
@@ -1132,37 +1214,62 @@ class AuthRepository {
         }
     }
 
-    suspend fun getAllRequestsForUser(userId: String): List<Request> {
-        return try {
-            val snapshot = database.getReference("requests")
-                .orderByChild("riderId")
-                .equalTo(userId)
-                .get().await()
 
-            snapshot.children.mapNotNull { child ->
-                child.getValue(Request::class.java)
+
+    suspend fun getConductorRatings(conductorId: String): ConductorRatings? {
+        return try {
+            val snapshot = database.getReference("conductorRatings")
+                .child(conductorId)
+                .get()
+                .await()
+            val ratings = snapshot.getValue(ConductorRatings::class.java)
+
+            // If no ratings exist yet, try to generate them
+            if (ratings == null) {
+                Log.d("AuthRepository", "No conductor ratings found, attempting to generate for $conductorId")
+                updateConductorRatings(conductorId)
+                // Try to fetch again
+                val newSnapshot = database.getReference("conductorRatings")
+                    .child(conductorId)
+                    .get()
+                    .await()
+                newSnapshot.getValue(ConductorRatings::class.java)
+            } else {
+                ratings
             }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Get all requests failed: ${e.message}", e)
-            emptyList()
+            Log.e("AuthRepository", "Get conductor ratings failed: ${e.message}", e)
+            null
         }
     }
 
-    suspend fun getAllAcceptedRequestsForConductor(conductorId: String): List<Request> {
+    suspend fun getBusRatings(busId: String): BusRatings? {
         return try {
-            val snapshot = database.getReference("requests")
-                .orderByChild("acceptedBy")
-                .equalTo(conductorId)
-                .get().await()
+            val snapshot = database.getReference("busRatings")
+                .child(busId)
+                .get()
+                .await()
+            val ratings = snapshot.getValue(BusRatings::class.java)
 
-            snapshot.children.mapNotNull { child ->
-                child.getValue(Request::class.java)
-            }.filter { it.status == "Accepted" }
+            // If no ratings exist yet, try to generate them
+            if (ratings == null) {
+                Log.d("AuthRepository", "No bus ratings found, attempting to generate for $busId")
+                updateBusRatings(busId)
+                // Try to fetch again
+                val newSnapshot = database.getReference("busRatings")
+                    .child(busId)
+                    .get()
+                    .await()
+                newSnapshot.getValue(BusRatings::class.java)
+            } else {
+                ratings
+            }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Get all accepted requests failed: ${e.message}", e)
-            emptyList()
+            Log.e("AuthRepository", "Get bus ratings failed: ${e.message}", e)
+            null
         }
     }
+
 
     suspend fun submitTripRating(
         requestId: String,
@@ -1182,21 +1289,16 @@ class AuthRepository {
                 throw Exception("Unauthorized: You can only rate your own trips")
             }
 
-            if (request.status != "Accepted") {
+            // Check if trip is completed (either status is "Completed" or tripCompleted flag is true)
+            val isCompleted = request.status == "Completed" ||
+                    (request.status == "Accepted" && request.rideStatus?.tripCompleted == true)
+
+            if (!isCompleted) {
                 throw Exception("Can only rate completed trips")
             }
 
             if (request.rating != null) {
                 throw Exception("You have already rated this trip")
-            }
-
-            // Check if trip is completed (schedule ended)
-            request.scheduleId?.let { scheduleId ->
-                val scheduleSnapshot = database.getReference("schedules").child(scheduleId).get().await()
-                val schedule = scheduleSnapshot.getValue(Schedule::class.java)
-                if (schedule != null && schedule.endTime > System.currentTimeMillis()) {
-                    throw Exception("Cannot rate trip before it is completed")
-                }
             }
 
             val rating = TripRating(
@@ -1233,6 +1335,755 @@ class AuthRepository {
         }
     }
 
+    suspend fun verifyOtpAndBoardRider(
+        requestId: String,
+        enteredOtp: String,
+        conductorId: String
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Verifying OTP for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.otp != enteredOtp) {
+                throw Exception("ভুল OTP। আবার চেষ্টা করুন।")
+            }
+
+            val currentTime = System.currentTimeMillis()
+            val rideStatus = RideStatus(
+                otpVerified = true,
+                otpVerifiedAt = currentTime,
+                inBusTravelling = true,
+                boardedAt = currentTime
+            )
+
+            requestRef.child("rideStatus").setValue(rideStatus).await()
+
+            Log.d("AuthRepository", "OTP verified, rider boarded successfully")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "OTP verification failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun requestEarlyExit(
+        requestId: String,
+        riderId: String,
+        earlyExitStop: String,
+        earlyExitLatLng: LatLngData
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Requesting early exit for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.riderId != riderId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("আপনি এখনো বাসে উঠেননি")
+            }
+
+            val updates = mapOf(
+                "rideStatus/earlyExitRequested" to true,
+                "rideStatus/earlyExitRequestedAt" to System.currentTimeMillis(),
+                "rideStatus/earlyExitStop" to earlyExitStop,
+                "rideStatus/earlyExitLatLng" to earlyExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Early exit requested successfully")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Early exit request failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+
+    suspend fun requestLateExit(
+        requestId: String,
+        riderId: String,
+        lateExitStop: String,
+        lateExitLatLng: LatLngData
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Requesting late exit for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.riderId != riderId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("আপনি এখনো বাসে উঠেননি")
+            }
+
+            val updates = mapOf(
+                "rideStatus/lateExitRequested" to true,
+                "rideStatus/lateExitStop" to lateExitStop,
+                "rideStatus/lateExitLatLng" to lateExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Late exit requested successfully")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Late exit request failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+
+    suspend fun calculateAndUpdateFare(
+        requestId: String,
+        actualDestination: String,
+        actualDestinationLatLng: LatLngData,
+        busId: String
+    ): Result<Int> {
+        return try {
+            Log.d("AuthRepository", "Calculating fare for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val requestSnapshot = requestRef.get().await()
+
+            if (!requestSnapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = requestSnapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            // Get bus fare structure
+            val busRef = database.getReference("buses").child(busId)
+            val busSnapshot = busRef.get().await()
+
+            if (!busSnapshot.exists()) {
+                throw Exception("বাসের তথ্য পাওয়া যায়নি")
+            }
+
+            val bus = busSnapshot.getValue(Bus::class.java)
+                ?: throw Exception("বাসের ডেটা পড়তে ব্যর্থ")
+
+            // Try to get exact fare from bus fare structure first
+            val exactFare = try {
+                bus.fares[request.pickup]?.get(actualDestination)
+            } catch (e: Exception) {
+                null
+            }
+
+            val actualFare = if (exactFare != null) {
+                // Use predefined fare if available
+                exactFare * request.seats
+            } else {
+                // Calculate fare based on distance
+                val pickupLat = request.pickupLatLng?.lat ?: 0.0
+                val pickupLng = request.pickupLatLng?.lng ?: 0.0
+                val destLat = actualDestinationLatLng.lat
+                val destLng = actualDestinationLatLng.lng
+
+                val distance = calculateDistance(pickupLat, pickupLng, destLat, destLng)
+
+                // Base fare: 10 taka per km, minimum 20 taka
+                val baseFare = (distance * 10).toInt().coerceAtLeast(20)
+                baseFare * request.seats
+            }
+
+            // Update fare in request
+            val updates = mapOf(
+                "rideStatus/actualFare" to actualFare
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Fare calculated: $actualFare (was: ${request.fare})")
+            Result.success(actualFare)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Fare calculation failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun approveEarlyExit(
+        requestId: String,
+        conductorId: String
+    ): Result<Unit> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.earlyExitRequested != true) {
+                throw Exception("যাত্রী আগাম নামার অনুরোধ করেননি")
+            }
+
+            // Calculate new fare based on early exit location
+            val earlyExitLatLng = request.rideStatus.earlyExitLatLng
+                ?: throw Exception("আগাম নামার স্থান পাওয়া যায়নি")
+
+            val fareResult = calculateAndUpdateFare(
+                requestId,
+                request.rideStatus.earlyExitStop ?: "",
+                earlyExitLatLng,
+                request.busId ?: ""
+            )
+
+            if (fareResult.isFailure) {
+                throw fareResult.exceptionOrNull() ?: Exception("ভাড়া গণনা ব্যর্থ")
+            }
+
+            // Mark early exit as approved by updating destination
+            val updates = mapOf(
+                "destination" to request.rideStatus.earlyExitStop,
+                "destinationLatLng" to earlyExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Early exit approved with new fare: ${fareResult.getOrNull()}")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Early exit approval failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun approveLateExit(
+        requestId: String,
+        conductorId: String
+    ): Result<Unit> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.conductorId != conductorId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.lateExitRequested != true) {
+                throw Exception("যাত্রী দেরিতে নামার অনুরোধ করেননি")
+            }
+
+            // Calculate new fare based on late exit location
+            val lateExitLatLng = request.rideStatus.lateExitLatLng
+                ?: throw Exception("দেরিতে নামার স্থান পাওয়া যায়নি")
+
+            val fareResult = calculateAndUpdateFare(
+                requestId,
+                request.rideStatus.lateExitStop ?: "",
+                lateExitLatLng,
+                request.busId ?: ""
+            )
+
+            if (fareResult.isFailure) {
+                throw fareResult.exceptionOrNull() ?: Exception("ভাড়া গণনা ব্যর্থ")
+            }
+
+            // Mark late exit as approved by updating destination
+            val updates = mapOf(
+                "destination" to request.rideStatus.lateExitStop,
+                "destinationLatLng" to lateExitLatLng
+            )
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Late exit approved with new fare: ${fareResult.getOrNull()}")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Late exit approval failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+
+    suspend fun getRequestsForUser(userId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("riderId")
+                .equalTo(userId)
+                .get().await()
+
+            val requests = snapshot.children.mapNotNull { child: DataSnapshot ->
+                child.getValue(Request::class.java)
+            }
+
+            // Filter: Show ONLY active requests (Pending or Accepted but NOT completed)
+            requests.filter { request ->
+                when {
+                    request.status == "Cancelled" -> false
+                    request.status == "Pending" -> true
+                    request.status == "Accepted" -> {
+                        // Show accepted requests that are NOT yet completed
+                        request.rideStatus?.tripCompleted != true
+                    }
+                    request.status == "Completed" -> false
+                    else -> false
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+
+    suspend fun getAllRequestsForUser(userId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("riderId")
+                .equalTo(userId)
+                .get().await()
+
+            snapshot.children.mapNotNull { child ->
+                child.getValue(Request::class.java)
+            }
+            // Return all requests - PastTripsScreen will handle filtering
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get all requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+
+    suspend fun isChatEnabled(requestId: String): Boolean {
+        return try {
+            val snapshot = database.getReference("requests").child(requestId).get().await()
+            val request = snapshot.getValue(Request::class.java) ?: return false
+
+            // Chat is enabled if:
+            // 1. Request is Accepted (or Completed status)
+            // 2. Has a scheduleId
+            // 3. Schedule ended within the last 5 days (432000000ms = 5 days)
+            if ((request.status != "Accepted" && request.status != "Completed") ||
+                request.scheduleId == null) return false
+
+            val scheduleSnapshot = database.getReference("schedules")
+                .child(request.scheduleId)
+                .get()
+                .await()
+            val schedule = scheduleSnapshot.getValue(Schedule::class.java) ?: return false
+
+            val currentTime = System.currentTimeMillis()
+            val fiveDaysInMs = 432000000L // 5 days
+
+            // Chat available if schedule ended within last 5 days
+            currentTime <= (schedule.endTime + fiveDaysInMs)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Check chat enabled failed: ${e.message}", e)
+            false
+        }
+    }
+
+
+
+    suspend fun confirmRiderArrival(
+        requestId: String,
+        riderId: String
+    ): Result<Unit> {
+        return try {
+            Log.d("AuthRepository", "Rider confirming arrival for request: $requestId")
+
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                throw Exception("রিকোয়েস্ট পাওয়া যায়নি")
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: throw Exception("রিকোয়েস্ট ডেটা পড়তে ব্যর্থ")
+
+            if (request.riderId != riderId) {
+                throw Exception("আপনার এই রিকোয়েস্টের অনুমতি নেই")
+            }
+
+            if (request.rideStatus?.inBusTravelling != true) {
+                throw Exception("আপনি এখনো বাসে উঠেননি")
+            }
+
+            val currentTime = System.currentTimeMillis()
+            val updates = mutableMapOf<String, Any>(
+                "rideStatus/riderArrivedConfirmed" to true,
+                "rideStatus/riderArrivedAt" to currentTime
+            )
+
+            // If conductor also confirmed and fare collected, mark trip as completed
+            if (request.rideStatus?.conductorArrivedConfirmed == true &&
+                request.rideStatus.fareCollected == true) {
+                updates["rideStatus/tripCompleted"] = true
+                updates["rideStatus/tripCompletedAt"] = currentTime
+                updates["status"] = "Completed" // THIS IS KEY - Update main status
+            }
+
+            requestRef.updateChildren(updates).await()
+
+            Log.d("AuthRepository", "Rider arrival confirmed")
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Rider arrival confirmation failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+
+    suspend fun canRateTrip(requestId: String, riderId: String): Boolean {
+        return try {
+            val snapshot = database.getReference("requests").child(requestId).get().await()
+            val request = snapshot.getValue(Request::class.java) ?: return false
+
+            Log.d("AuthRepository", "canRateTrip - requestId: $requestId, status: ${request.status}, tripCompleted: ${request.rideStatus?.tripCompleted}, hasRating: ${request.rating != null}")
+
+            // Check if rider owns this request
+            if (request.riderId != riderId) {
+                Log.d("AuthRepository", "canRateTrip - Rider mismatch")
+                return false
+            }
+
+            // Check if trip is completed (either Completed status or tripCompleted flag)
+            val isCompleted = request.status == "Completed" ||
+                    (request.status == "Accepted" && request.rideStatus?.tripCompleted == true)
+
+            if (!isCompleted) {
+                Log.d("AuthRepository", "canRateTrip - Trip not completed")
+                return false
+            }
+
+            // Check if already rated
+            if (request.rating != null) {
+                Log.d("AuthRepository", "canRateTrip - Already rated")
+                return false
+            }
+
+            Log.d("AuthRepository", "canRateTrip - Can rate: true")
+            true
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Check can rate failed: ${e.message}", e)
+            false
+        }
+    }
+
+
+
+    suspend fun getAllAcceptedRequestsForConductor(conductorId: String): List<Request> {
+        return try {
+            val snapshot = database.getReference("requests")
+                .orderByChild("acceptedBy")
+                .equalTo(conductorId)
+                .get().await()
+
+            val requests = snapshot.children.mapNotNull { child ->
+                child.getValue(Request::class.java)
+            }
+
+            // Return ALL accepted requests (both active and completed)
+            // Filter by status: "Accepted" or "Completed"
+            val result = requests.filter {
+                it.status == "Accepted" || it.status == "Completed"
+            }
+
+            Log.d("AuthRepository", "getAllAcceptedRequestsForConductor: Found ${result.size} requests for conductor $conductorId")
+
+            result
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Get all accepted requests failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    // Add these new functions to AuthRepository.kt
+
+    /**
+     * Automatically detect if rider has reached destination and complete trip
+     * This should be called periodically (every 10-15 seconds) while rider is traveling
+     */
+    suspend fun checkAndAutoCompleteTrip(
+        requestId: String,
+        riderCurrentLocation: LatLng
+    ): Result<Boolean> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                return Result.failure(Exception("Request not found"))
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: return Result.failure(Exception("Failed to parse request"))
+
+            // Only auto-complete if rider is traveling and trip not already completed
+            if (request.rideStatus?.inBusTravelling != true ||
+                request.rideStatus.tripCompleted == true) {
+                return Result.success(false)
+            }
+
+            // Get destination coordinates
+            val destLat = request.destinationLatLng?.lat ?: return Result.success(false)
+            val destLng = request.destinationLatLng?.lng ?: return Result.success(false)
+
+            // Calculate distance to destination
+            val distanceToDestination = calculateDistance(
+                riderCurrentLocation.latitude,
+                riderCurrentLocation.longitude,
+                destLat,
+                destLng
+            )
+
+            // If within 50 meters of destination, auto-complete
+            if (distanceToDestination <= 0.05) { // 50 meters = 0.05 km
+                Log.d("AutoComplete", "Rider reached destination, auto-completing trip")
+
+                val currentTime = System.currentTimeMillis()
+                val updates = mapOf(
+                    "rideStatus/riderArrivedConfirmed" to true,
+                    "rideStatus/riderArrivedAt" to currentTime,
+                    "rideStatus/conductorArrivedConfirmed" to true,
+                    "rideStatus/conductorArrivedAt" to currentTime,
+                    "rideStatus/fareCollected" to true,
+                    "rideStatus/fareCollectedAt" to currentTime,
+                    "rideStatus/tripCompleted" to true,
+                    "rideStatus/tripCompletedAt" to currentTime,
+                    "status" to "Completed"
+                )
+
+                requestRef.updateChildren(updates).await()
+
+                Log.d("AutoComplete", "Trip auto-completed successfully")
+                return Result.success(true)
+            }
+
+            Result.success(false)
+        } catch (e: Exception) {
+            Log.e("AutoComplete", "Auto-complete check failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Automatically detect and handle early/late exit requests based on rider location
+     * Returns: "early" if rider approaching early stop, "late" if past destination, null otherwise
+     */
+    suspend fun detectAndHandleExitChange(
+        requestId: String,
+        riderCurrentLocation: LatLng
+    ): Result<String?> {
+        return try {
+            val requestRef = database.getReference("requests").child(requestId)
+            val snapshot = requestRef.get().await()
+
+            if (!snapshot.exists()) {
+                return Result.failure(Exception("Request not found"))
+            }
+
+            val request = snapshot.getValue(Request::class.java)
+                ?: return Result.failure(Exception("Failed to parse request"))
+
+            // Only check if rider is traveling
+            if (request.rideStatus?.inBusTravelling != true) {
+                return Result.success(null)
+            }
+
+            // Skip if already requested exit change
+            if (request.rideStatus.earlyExitRequested || request.rideStatus.lateExitRequested) {
+                return Result.success(null)
+            }
+
+            val busId = request.busId ?: return Result.success(null)
+            val bus = getBus(busId) ?: return Result.success(null)
+            val route = bus.route ?: return Result.success(null)
+
+            // Get destination coordinates
+            val destLat = request.destinationLatLng?.lat ?: return Result.success(null)
+            val destLng = request.destinationLatLng?.lng ?: return Result.success(null)
+
+            val distanceToOriginalDest = calculateDistance(
+                riderCurrentLocation.latitude,
+                riderCurrentLocation.longitude,
+                destLat,
+                destLng
+            )
+
+            // Check for EARLY EXIT (approaching a stop before destination)
+            val allStops = mutableListOf<PointLocation>()
+            route.originLoc?.let { allStops.add(it) }
+            allStops.addAll(route.stopPointsLoc)
+            route.destinationLoc?.let { allStops.add(it) }
+
+            // Find destination index
+            val destGeoHash = GeoFireUtils.getGeoHashForLocation(
+                GeoLocation(destLat, destLng), 5
+            )
+            val destIndex = allStops.indexOfFirst { it.geohash == destGeoHash }
+
+            // Check stops before destination
+            for (i in 0 until destIndex) {
+                val stop = allStops[i]
+                val distanceToStop = calculateDistance(
+                    riderCurrentLocation.latitude,
+                    riderCurrentLocation.longitude,
+                    stop.latitude,
+                    stop.longitude
+                )
+
+                // If within 100 meters of a stop before destination
+                if (distanceToStop <= 0.1) { // 100 meters
+                    Log.d("AutoExitDetect", "Rider approaching early stop: ${stop.address}")
+
+                    // Auto-request early exit and recalculate fare
+                    val result = requestEarlyExit(
+                        requestId,
+                        request.riderId,
+                        stop.address,
+                        LatLngData(stop.latitude, stop.longitude)
+                    )
+
+                    if (result.isSuccess) {
+                        // Auto-approve and recalculate fare
+                        approveEarlyExit(requestId, request.conductorId)
+                        return Result.success("early")
+                    }
+                }
+            }
+
+            // Check for LATE EXIT (passed destination, approaching next stop)
+            if (distanceToOriginalDest > 0.2) { // More than 200m past destination
+                // Check stops after destination
+                for (i in (destIndex + 1) until allStops.size) {
+                    val stop = allStops[i]
+                    val distanceToStop = calculateDistance(
+                        riderCurrentLocation.latitude,
+                        riderCurrentLocation.longitude,
+                        stop.latitude,
+                        stop.longitude
+                    )
+
+                    // If within 100 meters of a stop after destination
+                    if (distanceToStop <= 0.1) {
+                        Log.d("AutoExitDetect", "Rider approaching late stop: ${stop.address}")
+
+                        // Auto-request late exit and recalculate fare
+                        val result = requestLateExit(
+                            requestId,
+                            request.riderId,
+                            stop.address,
+                            LatLngData(stop.latitude, stop.longitude)
+                        )
+
+                        if (result.isSuccess) {
+                            // Auto-approve and recalculate fare
+                            approveLateExit(requestId, request.conductorId)
+                            return Result.success("late")
+                        }
+                    }
+                }
+            }
+
+            Result.success(null)
+        } catch (e: Exception) {
+            Log.e("AutoExitDetect", "Exit detection failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Background monitoring service - call this periodically while rider is traveling
+     * Combines auto-completion and exit detection
+     */
+    suspend fun monitorRiderTrip(
+        requestId: String,
+        riderCurrentLocation: LatLng
+    ): Result<String> {
+        return try {
+            // First check for exit changes (early/late)
+            val exitChange = detectAndHandleExitChange(requestId, riderCurrentLocation)
+            if (exitChange.isSuccess && exitChange.getOrNull() != null) {
+                return Result.success("exit_changed_${exitChange.getOrNull()}")
+            }
+
+            // Then check for trip completion
+            val completed = checkAndAutoCompleteTrip(requestId, riderCurrentLocation)
+            if (completed.isSuccess && completed.getOrNull() == true) {
+                return Result.success("completed")
+            }
+
+            Result.success("monitoring")
+        } catch (e: Exception) {
+            Log.e("TripMonitor", "Monitoring failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371 // Radius of Earth in kilometers
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
+    }
+
+
+
     private suspend fun updateConductorRatings(conductorId: String) {
         try {
             // Get ALL requests and filter by conductorId in code
@@ -1240,9 +2091,9 @@ class AuthRepository {
 
             val ratedRequests = snapshot.children.mapNotNull { child ->
                 val req = child.getValue(Request::class.java)
-                // Filter: must match conductorId, be Accepted, and have a rating
+                // Filter: must match conductorId, be Accepted OR Completed, and have a rating
                 if (req?.conductorId == conductorId &&
-                    req.status == "Accepted" &&
+                    (req.status == "Accepted" || req.status == "Completed") &&  // ✅ FIXED
                     req.rating != null) {
                     req
                 } else {
@@ -1313,9 +2164,9 @@ class AuthRepository {
 
             val ratedRequests = snapshot.children.mapNotNull { child ->
                 val req = child.getValue(Request::class.java)
-                // Filter: must match busId, be Accepted, and have a rating
+                // Filter: must match busId, be Accepted OR Completed, and have a rating
                 if (req?.busId == busId &&
-                    req.status == "Accepted" &&
+                    (req.status == "Accepted" || req.status == "Completed") &&  // ✅ FIXED
                     req.rating != null) {
                     req
                 } else {
@@ -1376,86 +2227,6 @@ class AuthRepository {
             Log.d("AuthRepository", "Updated bus ratings for $busId: avg=${averageRating}, total=${totalRatings}")
         } catch (e: Exception) {
             Log.e("AuthRepository", "Update bus ratings failed: ${e.message}", e)
-        }
-    }
-
-    suspend fun getConductorRatings(conductorId: String): ConductorRatings? {
-        return try {
-            val snapshot = database.getReference("conductorRatings")
-                .child(conductorId)
-                .get()
-                .await()
-            val ratings = snapshot.getValue(ConductorRatings::class.java)
-
-            // If no ratings exist yet, try to generate them
-            if (ratings == null) {
-                Log.d("AuthRepository", "No conductor ratings found, attempting to generate for $conductorId")
-                updateConductorRatings(conductorId)
-                // Try to fetch again
-                val newSnapshot = database.getReference("conductorRatings")
-                    .child(conductorId)
-                    .get()
-                    .await()
-                newSnapshot.getValue(ConductorRatings::class.java)
-            } else {
-                ratings
-            }
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get conductor ratings failed: ${e.message}", e)
-            null
-        }
-    }
-
-    suspend fun getBusRatings(busId: String): BusRatings? {
-        return try {
-            val snapshot = database.getReference("busRatings")
-                .child(busId)
-                .get()
-                .await()
-            val ratings = snapshot.getValue(BusRatings::class.java)
-
-            // If no ratings exist yet, try to generate them
-            if (ratings == null) {
-                Log.d("AuthRepository", "No bus ratings found, attempting to generate for $busId")
-                updateBusRatings(busId)
-                // Try to fetch again
-                val newSnapshot = database.getReference("busRatings")
-                    .child(busId)
-                    .get()
-                    .await()
-                newSnapshot.getValue(BusRatings::class.java)
-            } else {
-                ratings
-            }
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Get bus ratings failed: ${e.message}", e)
-            null
-        }
-    }
-
-    suspend fun canRateTrip(requestId: String, riderId: String): Boolean {
-        return try {
-            val snapshot = database.getReference("requests").child(requestId).get().await()
-            val request = snapshot.getValue(Request::class.java) ?: return false
-
-            // Check if rider owns this request
-            if (request.riderId != riderId) return false
-
-            // Check if trip is accepted
-            if (request.status != "Accepted") return false
-
-            // Check if already rated
-            if (request.rating != null) return false
-
-            // Check if trip is completed
-            request.scheduleId?.let { scheduleId ->
-                val scheduleSnapshot = database.getReference("schedules").child(scheduleId).get().await()
-                val schedule = scheduleSnapshot.getValue(Schedule::class.java)
-                schedule != null && schedule.endTime < System.currentTimeMillis()
-            } ?: false
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "Check can rate failed: ${e.message}", e)
-            false
         }
     }
 }

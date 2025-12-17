@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -18,6 +19,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,12 +27,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.muritin.ui.theme.BackgroundLight
+import com.example.muritin.ui.theme.Border
+import com.example.muritin.ui.theme.Primary
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -78,7 +85,9 @@ fun SearchLocation(
             .padding(horizontal = 8.dp, vertical = 4.dp),
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Color(0xFF6650A4)
+            focusedBorderColor = Primary,
+            unfocusedBorderColor = Border,
+            focusedLabelColor = Primary
         ),
         trailingIcon = {
             if (isSearching) {
@@ -91,24 +100,32 @@ fun SearchLocation(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 150.dp)
-                .padding(horizontal = 8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            shape = RoundedCornerShape(8.dp)
+                .padding(horizontal = 8.dp)
+                .heightIn(max = 180.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White
+            ),
+            shape = RoundedCornerShape(12.dp)
         ) {
-            LazyColumn {
-                items(suggestions) { suggestion: String ->
-                    ListItem(
-                        headlineContent = { Text(text = suggestion, style = MaterialTheme.typography.bodyMedium) },
+            LazyColumn(
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                items(suggestions) { suggestion ->
+                    // Rounded row “option” look
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable {
                                 coroutineScope.launch {
                                     isSearching = true
                                     try {
-                                        val response = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        val response = withContext(Dispatchers.IO) {
                                             geocodingApi.getLatLng(suggestion, apiKey)
                                         }
+
                                         if (response.status == "OK" && response.results.isNotEmpty()) {
                                             val latLng = LatLng(
                                                 response.results[0].geometry.location.lat,
@@ -130,10 +147,16 @@ fun SearchLocation(
                                         isSearching = false
                                     }
                                 }
-                            }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                    Divider(color = Color.LightGray)
+                            },
+                        color = Color(0xFFF7F7F7), // light grey for better contrast inside card
+                        tonalElevation = 1.dp
+                    ) {
+                        Text(
+                            text = suggestion,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
                 }
             }
         }

@@ -261,7 +261,7 @@ fun ShowAnalyticsReport(
                                         text = "বাস: ${bus?.name ?: "অজানা"}",
                                         style = MaterialTheme.typography.headlineSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = Primary
                                     )
 
                                     if (userData?.role == "Conductor") {
@@ -269,7 +269,7 @@ fun ShowAnalyticsReport(
                                         Text(
                                             text = "গত ৩ দিনের রিপোর্ট",
                                             style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                            color = PrimaryLight
                                         )
                                     }
                                 }
@@ -280,7 +280,7 @@ fun ShowAnalyticsReport(
                             if (isLoading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.align(Alignment.CenterHorizontally),
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = Primary
                                 )
                             } else if (dailyReport.isEmpty()) {
 
@@ -290,9 +290,7 @@ fun ShowAnalyticsReport(
                                         .padding(top = 8.dp),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
-                                            alpha = 0.3f
-                                        )
+                                        containerColor = BackgroundLight
                                     ),
                                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                                 ) {
@@ -305,7 +303,7 @@ fun ShowAnalyticsReport(
                                         Icon(
                                             imageVector = Icons.Outlined.Info,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                            tint = Primary,
                                             modifier = Modifier.size(40.dp)
                                         )
 

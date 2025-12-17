@@ -300,6 +300,7 @@ fun LoginScreen(
                                         else -> {
                                             scope.launch {
                                                 snackbarHostState.showSnackbar("ইমেইল অথবা পাসওয়ার্ড সঠিক নয়")
+                                                Toast.makeText(context, "ইমেইল অথবা পাসওয়ার্ড সঠিক নয়", Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     }
@@ -419,6 +420,7 @@ fun LoginScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
+
                             Column {
                                 Text(
                                     "সাহায্য প্রয়োজন?",

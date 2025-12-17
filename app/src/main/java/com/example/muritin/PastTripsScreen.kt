@@ -42,17 +42,42 @@ fun PastTripsScreen(navController: NavHostController, user: FirebaseUser) {
     var selectedBus by remember { mutableStateOf<Bus?>(null) }
     var selectedConductor by remember { mutableStateOf<User?>(null) }
 
+
+
     suspend fun fetchPastTrips() {
         try {
             Log.d("PastTripsScreen", "Fetching all trips for user ${user.uid}")
             val allUserRequests = AuthRepository().getAllRequestsForUser(user.uid)
-            // Sort by acceptedAt in descending order (newest first)
+
+            Log.d("PastTripsScreen", "Total requests from database: ${allUserRequests.size}")
+
+            // Log each request's status for debugging
+            allUserRequests.forEach { request ->
+                Log.d("PastTripsScreen", "Request ${request.id}: status=${request.status}, tripCompleted=${request.rideStatus?.tripCompleted}, riderConfirmed=${request.rideStatus?.riderArrivedConfirmed}, conductorConfirmed=${request.rideStatus?.conductorArrivedConfirmed}")
+            }
+
+            // Show completed trips: either status is "Completed" OR tripCompleted flag is true
             allRequests = allUserRequests
-                .filter { it.status == "Accepted" }
+                .filter { request ->
+                    // A trip is considered completed if:
+                    // 1. Status is "Completed", OR
+                    // 2. Status is "Accepted" AND tripCompleted flag is true
+                    val isCompleted = request.status == "Completed" ||
+                            (request.status == "Accepted" && request.rideStatus?.tripCompleted == true)
+
+                    if (isCompleted) {
+                        Log.d("PastTripsScreen", "Request ${request.id} is completed - including in past trips")
+                    }
+
+                    isCompleted
+                }
                 .sortedByDescending { it.acceptedAt }
+
+            Log.d("PastTripsScreen", "Filtered completed trips: ${allRequests.size}")
             isLoading = false
         } catch (e: Exception) {
             error = "ট্রিপ পুনরুদ্ধারে ত্রুটি: ${e.message}"
+            Log.e("PastTripsScreen", "Fetch failed: ${e.message}", e)
             isLoading = false
             scope.launch {
                 snackbarHostState.showSnackbar(error ?: "অজানা ত্রুটি")
@@ -632,6 +657,6 @@ fun RatingItem(label: String, rating: Float) {
             color = TextSecondary
         )
         Spacer(modifier = Modifier.height(4.dp))
-        RatingDisplay(rating)
+        RatingDisplay2(rating)
     }
 }

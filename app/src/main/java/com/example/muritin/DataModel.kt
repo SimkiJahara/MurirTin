@@ -99,7 +99,6 @@ data class StopWithDistance(
 )
 
 
-
 @Serializable
 data class Request(
     val id: String = "",
@@ -114,7 +113,7 @@ data class Request(
     var destinationGeoHash: String = "",
     val seats: Int = 1,
     val fare: Int = 0,
-    val status: String = "Pending",
+    val status: String = "Pending", // Pending, Accepted, Cancelled, Completed
     val conductorId: String = "",
     val otp: String? = null,
     val preBookDate: String? = null,
@@ -123,7 +122,10 @@ data class Request(
     val estimatedTimeToPickup: Int? = null,
     val acceptedAt: Long = 0L,
     val rating: TripRating? = null,
-    val requestedRoute: BusRoute? =null
+    val requestedRoute: BusRoute? = null,
+
+    // NEW: Ride tracking fields
+    val rideStatus: RideStatus? = null
 )
 
 // NEW: Rating model
@@ -167,6 +169,56 @@ data class ReviewSummary(
     val timestamp: Long = 0L,
     val route: String = ""  // e.g., "Mirpur to Uttara"
 )
+
+@Serializable
+data class RideStatus(
+    // OTP and Boarding
+    val otpVerified: Boolean = false,
+    val otpVerifiedAt: Long = 0L,
+    val inBusTravelling: Boolean = false,
+    val boardedAt: Long = 0L,
+
+    // Early exit request (before destination)
+    val earlyExitRequested: Boolean = false,
+    val earlyExitRequestedAt: Long = 0L,
+    val earlyExitStop: String? = null,
+    val earlyExitLatLng: LatLngData? = null,
+
+    // Late exit (beyond original destination)
+    val lateExitRequested: Boolean = false,
+    val lateExitStop: String? = null,
+    val lateExitLatLng: LatLngData? = null,
+
+    // Arrival confirmation (dual confirmation system)
+    val riderArrivedConfirmed: Boolean = false,
+    val riderArrivedAt: Long = 0L,
+    val conductorArrivedConfirmed: Boolean = false,
+    val conductorArrivedAt: Long = 0L,
+
+    // Fare collection
+    val fareCollected: Boolean = false,
+    val fareCollectedAt: Long = 0L,
+    val actualFare: Int = 0, // Updated fare if route changed
+
+    // Trip completion
+    val tripCompleted: Boolean = false,
+    val tripCompletedAt: Long = 0L
+)
+
+@Serializable
+data class FareCalculation(
+    val originalPickup: String = "",
+    val originalDestination: String = "",
+    val originalFare: Int = 0,
+    val actualPickup: String = "",
+    val actualDestination: String = "",
+    val actualDistance: Double = 0.0, // in km
+    val calculatedFare: Int = 0,
+    val fareAdjustmentReason: String = "", // "early_exit", "late_exit", "normal"
+    val calculatedAt: Long = 0L
+)
+
+
 
 
 
