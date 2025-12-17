@@ -30,10 +30,46 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(Dispatchers.IO)
     lateinit var fusedLocationClient: FusedLocationProviderClient
+
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+        if (fineLocationGranted || coarseLocationGranted) {
+            Log.d("MainActivity", "Location permissions granted")
+            // After location, request notification permission if needed
+            requestNotificationPermission()
+        } else {
+            Log.w("MainActivity", "Location permissions denied")
+            Toast.makeText(
+                this,
+                "লোকেশন অনুমতি প্রয়োজন",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    // Permission launcher for notifications (Android 13+)
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            Log.d("MainActivity", "Notification permission granted")
+        } else {
+            Log.w("MainActivity", "Notification permission denied")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         StrictMode.setThreadPolicy(
@@ -59,6 +95,8 @@ class MainActivity : ComponentActivity() {
         val apiKey = getString(R.string.map_api_key)
         Places.initializeWithNewPlacesApiEnabled(applicationContext, apiKey)
 
+        requestLocationPermissions()
+
         setContent {
             MuriTinTheme {
                 Surface(
@@ -70,6 +108,57 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // Function 1: Request Location Permissions
+    private fun requestLocationPermissions() {
+        when {
+            hasLocationPermissions() -> {
+                Log.d("MainActivity", "Location permissions already granted")
+                requestNotificationPermission()
+            }
+            else -> {
+                Log.d("MainActivity", "Requesting location permissions")
+                locationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
+        }
+    }
+
+    // Function 2: Request Notification Permission
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    Log.d("MainActivity", "Notification permission already granted")
+                }
+                else -> {
+                    Log.d("MainActivity", "Requesting notification permission")
+                    notificationPermissionLauncher.launch(
+                        Manifest.permission.POST_NOTIFICATIONS
+                    )
+                }
+            }
+        }
+    }
+
+    // Function 3: Check if Location Permissions are Granted
+    private fun hasLocationPermissions(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
     }
 }
 

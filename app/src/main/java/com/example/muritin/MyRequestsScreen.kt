@@ -296,18 +296,46 @@ fun RequestCard(
     }
 
     // AUTO-START MONITORING when rider boards the bus
+    // AUTO-START MONITORING when rider boards the bus
     LaunchedEffect(request.rideStatus?.inBusTravelling) {
         if (request.rideStatus?.inBusTravelling == true &&
             request.rideStatus.tripCompleted != true) {
 
-            Log.d("RequestCard", "Starting automatic trip monitoring for ${request.id}")
-            TripMonitoringService.startMonitoring(context, request.id)
+            // ✅ CHECK PERMISSIONS BEFORE STARTING SERVICE
+            if (!context.hasLocationPermissions()) {
+                Log.w("RequestCard", "Location permissions not granted, cannot start monitoring")
+                Toast.makeText(
+                    context,
+                    "যাত্রা নিরীক্ষণের জন্য লোকেশন অনুমতি প্রয়োজন",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@LaunchedEffect
+            }
 
-            Toast.makeText(
-                context,
-                "স্বয়ংক্রিয় যাত্রা পর্যবেক্ষণ শুরু হয়েছে",
-                Toast.LENGTH_SHORT
-            ).show()
+            Log.d("RequestCard", "Starting automatic trip monitoring for ${request.id}")
+            try {
+                TripMonitoringService.startMonitoring(context, request.id)
+
+                Toast.makeText(
+                    context,
+                    "স্বয়ংক্রিয় যাত্রা পর্যবেক্ষণ শুরু হয়েছে",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (e: SecurityException) {
+                Log.e("RequestCard", "SecurityException starting monitoring: ${e.message}", e)
+                Toast.makeText(
+                    context,
+                    "যাত্রা নিরীক্ষণ শুরু করতে ব্যর্থ: অনুমতি প্রয়োজন",
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (e: Exception) {
+                Log.e("RequestCard", "Error starting monitoring: ${e.message}", e)
+                Toast.makeText(
+                    context,
+                    "যাত্রা নিরীক্ষণ শুরু করতে ত্রুটি",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
